@@ -13,5 +13,8 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="DiffDino Agent" anchor="right" icon="AllIcons.Toolwindows.ToolWindowMessages"
                     factoryClass="dev.diffdino.pairing.ui.AgentToolWindowFactory"/>
+        <applicationService serviceImplementation="dev.diffdino.pairing.settings.AgentSettings"/>
+        <applicationService serviceImplementation="dev.diffdino.pairing.mcp.AgentToolServer"/>
+        <projectService serviceImplementation="dev.diffdino.pairing.pairing.PairingProjectService"/>
     </extensions>
 </idea-plugin>
