@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.editor
 
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ApplicationManager
@@ -52,6 +53,7 @@ class EditorPairingPresentation(private val project: Project) : PairingPresentat
     private val needsState = MutableStateFlow<List<String>>(emptyList())
     private var shown: ShownDraft? = null
     private var closed = false
+    private val log = Logger.getInstance(EditorPairingPresentation::class.java)
 
     override val caret: StateFlow<EditorCaret?> get() = caretState
 
@@ -85,8 +87,13 @@ class EditorPairingPresentation(private val project: Project) : PairingPresentat
 
     override fun showDraft(location: StopLocation, draft: StopDraft, actions: SuggestionActions) {
         clearDraft()
-        val file = places.fileAt(location.absolutePath, refresh = false) ?: return
-        val document = FileDocumentManager.getInstance().getDocument(file) ?: return
+        val file = places.fileAt(location.absolutePath, refresh = true)
+        val document = file?.let { FileDocumentManager.getInstance().getDocument(it) }
+        if (file == null || document == null) {
+            log.warn("No document to draw the draft in: ${location.absolutePath}")
+            return
+        }
+
         shown = ShownDraft(project, file, document, location, draft, actions, scope) { needsState.value = it }
     }
 

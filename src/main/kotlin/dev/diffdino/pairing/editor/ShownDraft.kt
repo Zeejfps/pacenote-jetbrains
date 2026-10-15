@@ -262,7 +262,7 @@ internal class ShownDraft(
     override fun dispose() {
         disposed = true
         namesJob?.cancel()
-        tint?.let { DocumentMarkupModel.forDocument(document, project, true).removeHighlighter(it) }
+        tint?.dispose()
         listOfNotNull(below, anchor, replaced).distinct().forEach { it.dispose() }
         blocks.clear()
     }
