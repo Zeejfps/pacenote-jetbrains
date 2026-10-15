@@ -2,6 +2,7 @@ package dev.diffdino.pairing.ui
 
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.UIUtil
 import dev.diffdino.pairing.acp.AcpFileEdit
 import dev.diffdino.pairing.model.CodeQuote
@@ -90,7 +91,7 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
         conversation to transcript.messages.value.filterIsInstance<PairingMessage.Approval>().single()
     }
 
-    fun testPanelShowsTheSessionStopAndTranscriptAndAnAnsweredApprovalCollapses() {
+    fun testPanelShowsTheSessionStopAndTranscriptAndAnAnsweredApprovalShowsHowItWent() {
         val (conversation, approval) = conversationWithEverything()
         val panel = ConversationPanel(conversation, project, Lifetime(testRootDisposable))
 
@@ -100,6 +101,7 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
         assertEquals(1, buttons(panel, "Allow").size)
         assertEquals(1, buttons(panel, "Deny").size)
         assertEquals(1, buttons(panel, "Allow edits to this file").size)
+        assertEquals(1, buttons(panel, "Accept & next").size)
         assertTrue(buttons(panel, "Next").isNotEmpty())
         assertTrue(buttons(panel, "Skip").isNotEmpty())
         val panes = UIUtil.findComponentsOfType(panel, WrappingHtmlPane::class.java)
@@ -112,6 +114,7 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
 
         assertEquals(ToolApprovalOutcome.Approved, approval.pending.outcome.value)
         assertTrue(buttons(panel, "Allow").isEmpty())
+        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved" })
     }
 
     fun testHtmlTextIsTallerWhenTheWidthIsNarrower() {

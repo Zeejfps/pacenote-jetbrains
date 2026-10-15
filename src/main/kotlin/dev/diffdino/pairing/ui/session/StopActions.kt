@@ -7,29 +7,29 @@ import com.intellij.util.ui.JBUI
 import dev.diffdino.pairing.model.DraftState
 import dev.diffdino.pairing.pairing.PairingSession
 import dev.diffdino.pairing.pairing.StopActivity
+import dev.diffdino.pairing.ui.support.ChatButton
 import dev.diffdino.pairing.ui.support.ChatColors
 import dev.diffdino.pairing.ui.support.DiffDinoBundle
 import dev.diffdino.pairing.ui.support.Lifetime
 import dev.diffdino.pairing.ui.support.WrapPanel
 import java.awt.BorderLayout
 import java.awt.FlowLayout
-import javax.swing.JButton
 import javax.swing.JPanel
 
-/** The stop's controls: Accept, Accept & next, Next and Skip. They wait while the card is busy
- * checking the user's changes or putting the code in. */
+/** The stop's controls: Accept & next, Accept, Next and Skip, with the one to press next filled in. They
+ * wait while the card is busy checking the user's changes or putting the code in. */
 class StopActions(private val session: PairingSession, lifetime: Lifetime) : JPanel(BorderLayout()) {
     private val store = session.store
-    private val acceptAndNext = JButton(DiffDinoBundle.message("stop.accept.next")).apply {
+    private val acceptAndNext = ChatButton(DiffDinoBundle.message("stop.accept.next")).apply {
         addActionListener { session.acceptAndNext() }
     }
-    private val accept = JButton(DiffDinoBundle.message("stop.accept")).apply {
+    private val accept = ChatButton(DiffDinoBundle.message("stop.accept")).apply {
         addActionListener { session.accept() }
     }
-    private val next = JButton(DiffDinoBundle.message("stop.next")).apply {
+    private val next = ChatButton(DiffDinoBundle.message("stop.next")).apply {
         addActionListener { session.next() }
     }
-    private val skip = JButton(DiffDinoBundle.message("stop.skip")).apply { addActionListener { session.skip() } }
+    private val skip = ChatButton(DiffDinoBundle.message("stop.skip")).apply { addActionListener { session.skip() } }
     private val busyText = JBLabel().apply { foreground = ChatColors.secondaryText }
     private val busyIcon = AsyncProcessIcon("diffdino-stop-busy")
     private val busy = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
@@ -61,6 +61,8 @@ class StopActions(private val session: PairingSession, lifetime: Lifetime) : JPa
         val offered = open?.draftState is DraftState.Offered
         acceptAndNext.isVisible = offered
         accept.isVisible = offered
+        acceptAndNext.primary = offered
+        next.primary = !offered
         for (button in listOf(acceptAndNext, accept, next, skip)) button.isEnabled = idle
         busy.isVisible = activity != StopActivity.Idle
         busyText.text = when (activity) {

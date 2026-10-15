@@ -9,21 +9,21 @@ data class AgentStatus(val text: String, val trouble: Boolean)
 
 object AgentStatusText {
     /** The session's phase while one runs, else the agent's own. */
-    fun of(agent: String, phase: AgentPhase, session: PairingPhase?): AgentStatus {
+    fun of(phase: AgentPhase, session: PairingPhase?): AgentStatus {
         if (session != null) return when (session) {
-            PairingPhase.Starting -> AgentStatus(DiffDinoBundle.message("status.starting", agent), false)
+            PairingPhase.Starting -> AgentStatus(DiffDinoBundle.message("status.starting"), false)
             is PairingPhase.Running ->
                 if (session.waiting) AgentStatus(DiffDinoBundle.message("status.your.turn"), false)
-                else AgentStatus(DiffDinoBundle.message("status.working", agent), false)
+                else AgentStatus(DiffDinoBundle.message("status.working"), false)
             is PairingPhase.Ended -> AgentStatus(DiffDinoBundle.message("status.session.ended"), false)
             is PairingPhase.Failed -> AgentStatus(DiffDinoBundle.message("status.session.failed"), true)
             is PairingPhase.Disconnected -> AgentStatus(DiffDinoBundle.message("status.gone"), true)
         }
 
         return when (phase) {
-            AgentPhase.Starting -> AgentStatus(DiffDinoBundle.message("status.starting", agent), false)
+            AgentPhase.Starting -> AgentStatus(DiffDinoBundle.message("status.starting"), false)
             is AgentPhase.Running ->
-                if (phase.busy) AgentStatus(DiffDinoBundle.message("status.working", agent), false)
+                if (phase.busy) AgentStatus(DiffDinoBundle.message("status.working"), false)
                 else AgentStatus(DiffDinoBundle.message("status.ready"), false)
             is AgentPhase.Gone -> AgentStatus(DiffDinoBundle.message("status.gone"), true)
         }

@@ -47,6 +47,6 @@ class ConversationPanel(conversation: AgentConversation, project: Project, priva
 
     private companion object {
         const val SPLIT_KEY = "DiffDino.Agent.SessionSplit"
-        const val SPLIT_DEFAULT = 0.45f
+        const val SPLIT_DEFAULT = 0.5f
     }
 }

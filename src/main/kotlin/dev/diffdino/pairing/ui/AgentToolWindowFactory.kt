@@ -18,6 +18,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val disposable: Disposable = Disposer.newDisposable("DiffDino agent tool window")
         Disposer.register(toolWindow.disposable, disposable)
+        toolWindow.setAdditionalGearActions(ConversationActions(project).options)
         val content = ContentFactory.getInstance().createContent(AgentPanel(project, Lifetime(disposable)), null, false)
         toolWindow.contentManager.addContent(content)
     }

@@ -14,7 +14,8 @@ import dev.diffdino.pairing.ui.support.ChatColors
 import dev.diffdino.pairing.ui.support.DiffDinoBundle
 import dev.diffdino.pairing.ui.support.Lifetime
 import dev.diffdino.pairing.ui.support.ReactiveSlot
-import dev.diffdino.pairing.ui.support.RoundedPanel
+import dev.diffdino.pairing.ui.support.RoundedCard
+import dev.diffdino.pairing.ui.support.ChatButton
 import dev.diffdino.pairing.ui.support.WrappingHtmlPane
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -57,9 +58,8 @@ class StopSlot(session: PairingSession, lifetime: Lifetime) : JPanel(BorderLayou
 /** The stop the user is on: its number, title, where it is (a click goes back there), why, and where
  * the agent's code for it is. */
 class StopCard(private val session: PairingSession, open: OpenStop, lifetime: Lifetime) :
-    RoundedPanel(ChatColors.card, ChatColors.border, VerticalLayout(JBUI.scale(6))) {
+    RoundedCard(ChatColors.raised, layout = VerticalLayout(JBUI.scale(8))) {
     init {
-        border = JBUI.Borders.empty(10, 12)
         val stop = open.stop
         add(JPanel(BorderLayout()).apply {
             isOpaque = false
@@ -67,8 +67,9 @@ class StopCard(private val session: PairingSession, open: OpenStop, lifetime: Li
                 font = JBFont.small().asBold()
                 foreground = ChatColors.accent
             }, BorderLayout.WEST)
-            add(ActionLink(DiffDinoBundle.message("stop.show.change")) { session.revealStop() }.apply {
+            add(ChatButton(DiffDinoBundle.message("stop.show.change")).apply {
                 toolTipText = DiffDinoBundle.message("stop.go.to")
+                addActionListener { session.revealStop() }
             }, BorderLayout.EAST)
         })
         add(WrappingHtmlPane().also { Disposer.register(lifetime, it); it.showPlain(stop.title, bold = true) })

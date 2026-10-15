@@ -5,7 +5,6 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.util.ui.JBUI
 import dev.diffdino.pairing.pairing.AgentConversation
 import dev.diffdino.pairing.pairing.PairingMessage
-import dev.diffdino.pairing.ui.support.DiffDinoBundle
 import dev.diffdino.pairing.ui.support.Lifetime
 import dev.diffdino.pairing.ui.support.ScrollableColumn
 import dev.diffdino.pairing.ui.support.StickToBottom
@@ -28,11 +27,11 @@ class TranscriptView(
     private val scroll = ScrollableColumn.scrolling(column)
     private val follow = StickToBottom(scroll)
     private val shown = ArrayList<Pair<PairingMessage, Lifetime>>()
-    private val typing = TypingIndicator(DiffDinoBundle.message("typing.thinking", conversation.harness.name), conversation.isComposing, lifetime)
+    private val typing = TypingIndicator(conversation.isComposing, lifetime)
 
     init {
         isOpaque = false
-        column.border = JBUI.Borders.empty(10, 12)
+        column.border = JBUI.Borders.empty(12)
         column.add(typing)
         follow.follow(column)
         add(scroll, BorderLayout.CENTER)
@@ -68,6 +67,6 @@ class TranscriptView(
     }
 
     private companion object {
-        const val GAP = 10
+        const val GAP = 16
     }
 }

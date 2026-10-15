@@ -11,9 +11,19 @@ import java.awt.Color
 
 /** The colours of the chat, derived from the IDE theme or its editor scheme. */
 object ChatColors {
-    val card: Color = JBColor { ColorUtil.mix(UIUtil.getPanelBackground(), UIUtil.getLabelForeground(), 0.05) }
+    val raised: Color = JBColor { ColorUtil.mix(UIUtil.getPanelBackground(), UIUtil.getLabelForeground(), 0.045) }
 
-    val userBubble: Color = JBColor { ColorUtil.mix(UIUtil.getPanelBackground(), JBUI.CurrentTheme.Focus.focusColor(), 0.2) }
+    val userFill: Color = JBColor {
+        ColorUtil.mix(UIUtil.getPanelBackground(), JBUI.CurrentTheme.Focus.focusColor(), if (JBColor.isBright()) 0.16 else 0.34)
+    }
+
+    val inputFill: Color = JBColor { UIUtil.getTextFieldBackground() }
+
+    val focusRing: Color = JBColor { JBUI.CurrentTheme.Focus.focusColor() }
+
+    val accentFill: Color = JBColor { JBUI.CurrentTheme.Button.defaultButtonColorStart() }
+
+    val onAccent: Color = JBColor { JBUI.CurrentTheme.Button.defaultButtonForeground() }
 
     val border: Color = JBColor.border()
 
@@ -26,8 +36,6 @@ object ChatColors {
     val dangerText: Color = JBColor(0xC62828, 0xFF6B68)
 
     val successText: Color = JBColor(0x2E7D32, 0x6CC070)
-
-    val infoNoticeBackground: Color = JBColor { JBUI.CurrentTheme.Banner.INFO_BACKGROUND }
 
     val refusedNoticeBackground: Color = JBColor { JBUI.CurrentTheme.Banner.WARNING_BACKGROUND }
 

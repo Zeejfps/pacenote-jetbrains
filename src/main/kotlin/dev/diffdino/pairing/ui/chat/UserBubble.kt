@@ -1,25 +1,25 @@
 package dev.diffdino.pairing.ui.chat
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.panels.VerticalLayout
-import com.intellij.openapi.util.Disposer
 import com.intellij.util.ui.JBUI
 import dev.diffdino.pairing.model.CodeQuote
 import dev.diffdino.pairing.pairing.AgentPrompt
 import dev.diffdino.pairing.pairing.PairingMessage
 import dev.diffdino.pairing.pairing.lines
-import dev.diffdino.pairing.ui.support.ChatColors
 import dev.diffdino.pairing.ui.support.FileOpener
 import dev.diffdino.pairing.ui.support.Lifetime
-import dev.diffdino.pairing.ui.support.RoundedPanel
+import dev.diffdino.pairing.ui.support.PillBubble
 import dev.diffdino.pairing.ui.support.WrappingHtmlPane
 import java.awt.BorderLayout
 import java.nio.file.Path
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-/** What the user said, with the code they sent along, on a card that leaves room on the left. */
+/** What the user said, with the code they sent along, in a bubble on the right that is as wide as
+ * the words and no wider than most of the row. */
 class UserBubble(
     message: PairingMessage.FromUser,
     private val root: Path,
@@ -28,15 +28,16 @@ class UserBubble(
 ) : JPanel(BorderLayout()) {
     init {
         isOpaque = false
-        border = JBUI.Borders.emptyLeft(MARGIN)
-        val bubble = RoundedPanel(ChatColors.userBubble, layout = VerticalLayout(JBUI.scale(6)))
-        bubble.border = JBUI.Borders.empty(8, 10)
         val pane = WrappingHtmlPane()
         Disposer.register(lifetime, pane)
         pane.showPlain(message.text)
-        bubble.add(pane)
-        message.quote?.let { bubble.add(quoteOf(it)) }
-        add(bubble, BorderLayout.CENTER)
+        val content = JPanel(VerticalLayout(JBUI.scale(6))).apply {
+            isOpaque = false
+            add(pane)
+            message.quote?.let { add(quoteOf(it)) }
+        }
+        val wanted = if (message.quote == null) ({ pane.widestLine(message.text) + JBUI.scale(SLACK) }) else ({ Int.MAX_VALUE / 2 })
+        add(PillBubble(content, wanted), BorderLayout.CENTER)
     }
 
     private fun quoteOf(quote: CodeQuote): JComponent = when (quote) {
@@ -51,7 +52,7 @@ class UserBubble(
     }
 
     private companion object {
-        const val MARGIN = 28
         const val QUOTE_LINES = 8
+        const val SLACK = 6
     }
 }

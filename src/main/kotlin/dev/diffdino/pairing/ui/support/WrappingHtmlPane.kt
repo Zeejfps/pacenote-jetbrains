@@ -54,6 +54,13 @@ class WrappingHtmlPane : JBHtmlPane(
         return Dimension(width, height)
     }
 
+    /** How wide the longest line of [text] runs unwrapped, in this pane's font. */
+    fun widestLine(text: String): Int {
+        val metrics = getFontMetrics(font)
+        val widest = text.lineSequence().maxOfOrNull { metrics.stringWidth(it) } ?: 0
+        return widest + insets.left + insets.right
+    }
+
     override fun getMinimumSize(): Dimension = Dimension(0, preferredSize.height)
 
     override fun setBounds(x: Int, y: Int, width: Int, height: Int) {
