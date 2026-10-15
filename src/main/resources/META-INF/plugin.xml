@@ -14,4 +14,30 @@
         <toolWindow id="DiffDino Agent" anchor="right" icon="AllIcons.Toolwindows.ToolWindowMessages"
                     factoryClass="dev.diffdino.pairing.ui.AgentToolWindowFactory"/>
     </extensions>
+
+    <!-- Editor: drafts and spotlights drawn in the project's editors -->
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="dev.diffdino.pairing.editor.PairingEditorService"/>
+    </extensions>
+
+    <actions>
+        <action id="DiffDino.AcceptDraftAndNext" class="dev.diffdino.pairing.editor.actions.AcceptDraftAndNextAction"
+                text="DiffDino: Accept Draft and Next" description="Take the agent's draft for this stop and go on to the next stop">
+            <keyboard-shortcut keymap="$default" first-keystroke="control ENTER"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ENTER"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta ENTER"/>
+        </action>
+        <action id="DiffDino.AcceptDraft" class="dev.diffdino.pairing.editor.actions.AcceptDraftAction"
+                text="DiffDino: Accept Draft" description="Take the agent's draft for this stop into the file">
+            <keyboard-shortcut keymap="$default" first-keystroke="control shift ENTER"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift ENTER"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift ENTER"/>
+        </action>
+        <action id="DiffDino.NextStop" class="dev.diffdino.pairing.editor.actions.NextStopAction"
+                text="DiffDino: Next Stop" description="Leave the agent's draft and go on to the next stop">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt ENTER"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt ENTER"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt ENTER"/>
+        </action>
+    </actions>
 </idea-plugin>
