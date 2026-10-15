@@ -327,15 +327,21 @@ class AcpAgentConnection private constructor(
                 }
             }
 
-            val failure = try {
-                connection.open(workingDirectory.toString(), server, harness.askingMode, harness.sessionMeta)
+            var started = false
+            try {
+                val failure = connection.open(workingDirectory.toString(), server, harness.askingMode, harness.sessionMeta)
                     ?: harness.chatMode?.takeIf { !connection.offers(it) }?.let { "The agent offers no '$it' mode." }
-            } catch (e: Throwable) {
-                connection.dispose()
-                throw e
+                if (failure == null) {
+                    started = true
+                    return AcpStart.Started(connection)
+                }
+                return failed(connection, failure)
+            } finally {
+                if (!started) connection.dispose()
             }
+        }
 
-            if (failure == null) return AcpStart.Started(connection)
+        private fun failed(connection: AcpAgentConnection, failure: String): AcpStart {
             connection.dispose()
             val tail = connection.stderrTail
             return AcpStart.Failed(if (tail.isEmpty()) failure else "$failure\n$tail")
