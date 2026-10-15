@@ -20,6 +20,7 @@ import dev.diffdino.pairing.model.StopPlacement
 import dev.diffdino.pairing.model.StopTarget
 import dev.diffdino.pairing.model.SuggestionActions
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -374,7 +375,7 @@ class PairingStore(
     // A file a stop created for the user to fill goes again if they moved on and left it empty,
     // even when the session is being let go.
     private fun takeBack(createdFile: String?) {
-        if (createdFile != null) scope.launch(NonCancellable) { workspace.removeIfEmpty(createdFile) }
+        if (createdFile != null) scope.launch(NonCancellable, CoroutineStart.UNDISPATCHED) { workspace.removeIfEmpty(createdFile) }
     }
 
     private fun deliverAction(action: PairingAction) {
