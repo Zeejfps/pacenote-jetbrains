@@ -10,12 +10,18 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>Git4Idea</depends>
 
+    <resource-bundle>messages.DiffDinoBundle</resource-bundle>
+
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="DiffDino Agent" anchor="right" icon="AllIcons.Toolwindows.ToolWindowMessages"
                     factoryClass="dev.diffdino.pairing.ui.AgentToolWindowFactory"/>
         <applicationService serviceImplementation="dev.diffdino.pairing.settings.AgentSettings"/>
         <applicationService serviceImplementation="dev.diffdino.pairing.mcp.AgentToolServer"/>
         <projectService serviceImplementation="dev.diffdino.pairing.pairing.PairingProjectService"/>
+        <postStartupActivity implementation="dev.diffdino.pairing.ui.ToolWindowVisibility"/>
+        <applicationConfigurable parentId="tools" id="dev.diffdino.pairing.settings.agents"
+                                 instance="dev.diffdino.pairing.ui.settings.AgentPresetsConfigurable"
+                                 displayName="DiffDino"/>
     </extensions>
 
     <!-- Editor: drafts and spotlights drawn in the project's editors -->
@@ -46,6 +52,23 @@
             <keyboard-shortcut keymap="$default" first-keystroke="control alt ENTER"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt ENTER"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt ENTER"/>
+        </action>
+        <group id="DiffDino.Agent" text="DiffDino" popup="true">
+            <action id="DiffDino.OpenAgentChat"
+                    class="dev.diffdino.pairing.ui.action.OpenAgentChatAction"
+                    text="DiffDino: Open Agent Chat"
+                    description="Open the DiffDino agent chat, or start one"/>
+            <action id="DiffDino.StartPairingSession"
+                    class="dev.diffdino.pairing.ui.action.StartPairingSessionAction"
+                    text="DiffDino: Start Pairing Session..."
+                    description="Describe a change and have the agent take you through it one place at a time"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+        <action id="DiffDino.SendSelectionToAgent"
+                class="dev.diffdino.pairing.ui.action.SendSelectionToAgentAction"
+                text="Send Selection to DiffDino Agent"
+                description="Ask the DiffDino agent about the selected code">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>

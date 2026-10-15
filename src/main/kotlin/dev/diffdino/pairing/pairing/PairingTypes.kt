@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.pairing
 
+import dev.diffdino.pairing.acp.AcpFileEdit
 import dev.diffdino.pairing.model.CodeQuote
 import dev.diffdino.pairing.model.DraftOutcome
 import dev.diffdino.pairing.model.DraftState
@@ -75,10 +76,20 @@ sealed interface PairingMessage {
 
     /** A tool call the write guard left to the user, waiting on their answer: what an edit would
      * change, and the answer that covers its files from then on, where it has any. */
-    class Approval(val pending: PendingToolApproval, val preview: List<EditPreviewLine>, val allowance: FileAllowance?) : PairingMessage
+    class Approval(
+        val pending: PendingToolApproval,
+        val preview: List<EditPreviewLine>,
+        val allowance: FileAllowance?,
+        /** The edits the call would make, whole, for a viewer that shows more than [preview] does. */
+        val edits: List<AcpFileEdit> = emptyList(),
+    ) : PairingMessage
 
     /** An edit to a file the user allowed, let through without asking, and what it changed. */
-    data class AllowedEdit(val title: String, val preview: List<EditPreviewLine>) : PairingMessage
+    data class AllowedEdit(
+        val title: String,
+        val preview: List<EditPreviewLine>,
+        val edits: List<AcpFileEdit> = emptyList(),
+    ) : PairingMessage
 }
 
 /** The file's URI with the lines as a fragment, the way editors link a range. */
