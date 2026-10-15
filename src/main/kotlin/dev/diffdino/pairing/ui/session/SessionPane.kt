@@ -1,6 +1,5 @@
 package dev.diffdino.pairing.ui.session
 
-import com.intellij.openapi.project.Project
 import com.intellij.util.ui.JBUI
 import dev.diffdino.pairing.pairing.PairingSession
 import dev.diffdino.pairing.ui.support.Lifetime
@@ -12,7 +11,7 @@ import javax.swing.SwingUtilities
 /** The live session's pane above the conversation: the goal and roadmap, then the stop the user is
  * on, scrolling on its own, with the stop's controls pinned under it. A new stop takes it back to
  * the top. */
-class SessionPane(session: PairingSession, project: Project, lifetime: Lifetime) : JPanel(BorderLayout()) {
+class SessionPane(session: PairingSession, lifetime: Lifetime) : JPanel(BorderLayout()) {
     init {
         isOpaque = false
         val store = session.store
@@ -23,7 +22,7 @@ class SessionPane(session: PairingSession, project: Project, lifetime: Lifetime)
         }
         val scroll = ScrollableColumn.scrolling(column)
         add(scroll, BorderLayout.CENTER)
-        add(StopActions(session, project, lifetime), BorderLayout.SOUTH)
+        add(StopActions(session, lifetime), BorderLayout.SOUTH)
 
         var shown = store.stop.value?.stop?.number ?: 0
         lifetime.bind(store.stop) { open ->

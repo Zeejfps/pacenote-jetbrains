@@ -65,7 +65,7 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
     }
 
     private fun buttons(root: JComponent, text: String): List<JButton> =
-        UIUtil.findComponentsOfType(root, JButton::class.java).filter { it.text == text || it.text.startsWith("$text (") }
+        UIUtil.findComponentsOfType(root, JButton::class.java).filter { it.text == text }
 
     private fun conversationWithEverything(): Pair<AgentConversation, PairingMessage.Approval> = ui.run {
         val conversation = sessions.openChat(AgentPreset.ClaudeCode)

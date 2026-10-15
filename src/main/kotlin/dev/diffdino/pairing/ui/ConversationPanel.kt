@@ -36,7 +36,7 @@ class ConversationPanel(conversation: AgentConversation, project: Project, priva
                 val own = lifetime.child()
                 sessionLifetime = own
                 body.add(OnePixelSplitter(true, SPLIT_KEY, SPLIT_DEFAULT).apply {
-                    firstComponent = SessionPane(session, project, own)
+                    firstComponent = SessionPane(session, own)
                     secondComponent = chat
                 }, BorderLayout.CENTER)
             }
