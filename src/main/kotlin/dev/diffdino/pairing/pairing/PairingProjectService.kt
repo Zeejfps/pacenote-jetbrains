@@ -25,7 +25,7 @@ import java.nio.file.Path
 class PairingProjectService(private val project: Project, scope: CoroutineScope) : Disposable {
     private val ui = Dispatchers.EDT
     private val uiScope = scope + ui
-    private val root: Path = Path.of(project.basePath ?: System.getProperty("user.home"))
+    private val root: Path = RepoRoot.of(Path.of(project.basePath ?: System.getProperty("user.home")))
     private var endpoint: McpEndpoint? = null
 
     val sessions: PairingSessions = PairingSessions(PairingSessions.factory(
