@@ -62,16 +62,17 @@ internal class ShownDraft(
     private var missing: List<MissingName> = emptyList()
     private var lastAnchorLine = 0
     private var refreshQueued = false
+    private var disposed = false
     private var namesJob: CancellablePromise<*>? = null
 
     init {
         Disposer.register(parent, this)
         val anchorLine = when (place) {
             is DraftPlace.Replace -> document.clampLine(FileLine(place.lines.to))
-            is DraftPlace.InsertAfter -> place.line.value.coerceIn(0, document.lineCount)
+            is DraftPlace.InsertAfter -> place.line.value.coerceIn(0, document.fileLineCount)
         }
 
-        val lastLine = document.lineCount
+        val lastLine = document.fileLineCount
         hang = if (anchorLine < lastLine) Hang.AboveLine else Hang.BelowLine
         val belowOffset = if (anchorLine < lastLine) document.lineStart(FileLine(anchorLine + 1)) else document.textLength
         below = document.createRangeMarker(belowOffset, belowOffset).apply {
@@ -140,13 +141,12 @@ internal class ShownDraft(
     fun take(): Boolean {
         val edit = pendingEdit() ?: return false
         if (!ReadonlyStatusHandler.ensureDocumentWritable(project, document)) return false
+        val editor = blocks.keys.firstOrNull()
         WriteCommandAction.runWriteCommandAction(project, "Accept DiffDino Draft", null, {
             document.replaceString(edit.start, edit.end, edit.text)
+            editor?.caretModel?.moveToOffset(minOf(edit.start + edit.text.length, document.textLength))
         })
-        blocks.keys.firstOrNull()?.let { editor ->
-            editor.caretModel.moveToOffset(minOf(edit.start + edit.text.length, document.textLength))
-            editor.scrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
-        }
+        editor?.scrollingModel?.scrollToCaret(ScrollType.MAKE_VISIBLE)
         return true
     }
 
@@ -177,7 +177,7 @@ internal class ShownDraft(
     // Whole lines, so none is left behind blank: with the break after them, or at the end of the file
     // the one before them.
     private fun deletion(first: FileLine, last: FileLine): Edit = when {
-        last.value < document.lineCount -> Edit(document.lineStart(first), document.lineStart(FileLine(last.value + 1)), "")
+        last.value < document.fileLineCount -> Edit(document.lineStart(first), document.lineStart(FileLine(last.value + 1)), "")
         first.value > 1 -> Edit(document.lineEnd(FileLine(first.value - 1)), document.lineEnd(last), "")
         else -> Edit(0, document.textLength, "")
     }
@@ -200,9 +200,9 @@ internal class ShownDraft(
         lastAnchorLine = anchorLine
         val belowLine = when (hang) {
             Hang.AboveLine -> document.lineOf(below.startOffset).value
-            Hang.BelowLine -> document.lineCount + 1
+            Hang.BelowLine -> document.fileLineCount + 1
         }
-        return GhostMatch.remaining(lines, anchorLine, belowLine, document.lineCount) { document.lineText(FileLine(it)) }
+        return GhostMatch.remaining(lines, anchorLine, belowLine, document.fileLineCount) { document.lineText(FileLine(it)) }
     }
 
     // Null when nothing is left to show: what the user has typed is all of it.
@@ -228,7 +228,7 @@ internal class ShownDraft(
                 refresh()
             },
             ModalityState.any(),
-            { Disposer.isDisposed(this) },
+            { disposed },
         )
     }
 
@@ -260,6 +260,7 @@ internal class ShownDraft(
     }
 
     override fun dispose() {
+        disposed = true
         namesJob?.cancel()
         tint?.let { DocumentMarkupModel.forDocument(document, project, true).removeHighlighter(it) }
         listOfNotNull(below, anchor, replaced).distinct().forEach { it.dispose() }

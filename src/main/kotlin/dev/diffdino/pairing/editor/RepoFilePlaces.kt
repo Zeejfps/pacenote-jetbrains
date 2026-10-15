@@ -4,6 +4,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.limits.FileSizeLimit
 import git4idea.repo.GitRepositoryManager
 
 /**
@@ -42,5 +43,13 @@ internal class RepoFilePlaces(private val project: Project) {
     fun fileAt(absolutePath: String, refresh: Boolean): VirtualFile? {
         val system = root()?.fileSystem ?: return null
         return system.findFileByPath(absolutePath) ?: if (refresh) system.refreshAndFindFileByPath(absolutePath) else null
+    }
+
+    /** Why a file can't be read as text, or null when it can. */
+    fun whyUnreadable(file: VirtualFile): String? = when {
+        file.isDirectory -> "it is a directory"
+        file.fileType.isBinary -> "it is a binary file"
+        FileSizeLimit.isTooLargeForContentLoading(file.length, file.extension) -> "the file is too large to open"
+        else -> null
     }
 }

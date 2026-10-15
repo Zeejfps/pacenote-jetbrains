@@ -2,14 +2,14 @@ package dev.diffdino.pairing.editor
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.readAction
+import com.intellij.openapi.application.ReadConstraint
+import com.intellij.openapi.application.constrainedReadAction
 import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.psi.PsiManager
@@ -31,12 +31,13 @@ import kotlinx.coroutines.withContext
  * Points the user at code without a pairing session: opens a place in this project's editor and
  * lights runs of lines up with notes, one file at a time. Never switches projects.
  */
-internal class EditorCodeSpotlights(private val project: Project, private val scope: Disposable) : CodeSpotlights {
+class EditorCodeSpotlights(private val project: Project) : CodeSpotlights, Disposable {
+    private val scope: Disposable get() = this
     private val places = RepoFilePlaces(project)
     private var lit: LitSpotlights? = null
 
     /** The runs lit up now, as the lines they cover, or empty when none are. */
-    val litLines: List<LineSpan> get() = lit?.lines().orEmpty()
+    internal val litLines: List<LineSpan> get() = lit?.lines().orEmpty()
 
     override suspend fun show(path: String, target: ShowTarget): ShowOutcome {
         val source = when (val read = read(path)) {
@@ -112,9 +113,9 @@ internal class EditorCodeSpotlights(private val project: Project, private val sc
         val absolute = places.absolute(path) ?: return@withContext Read.Failed("$path is outside the repository.")
         val unavailable = Read.Failed("$path is not a file in the repository, or is too large to open.")
         val file = places.fileAt(absolute, refresh = true) ?: return@withContext unavailable
-        if (file.isDirectory || file.fileType.isBinary || FileUtilRt.isTooLarge(file.length)) return@withContext unavailable
-        readAction {
-            val document = FileDocumentManager.getInstance().getDocument(file) ?: return@readAction unavailable
+        if (places.whyUnreadable(file) != null) return@withContext unavailable
+        constrainedReadAction(ReadConstraint.withDocumentsCommitted(project)) {
+            val document = FileDocumentManager.getInstance().getDocument(file) ?: return@constrainedReadAction unavailable
             val outline = PsiManager.getInstance(project).findFile(file)?.let { DeclarationOutline.of(it, document) }
             Read.Found(absolute, file, document.text.split('\n'), outline)
         }
@@ -151,4 +152,6 @@ internal class EditorCodeSpotlights(private val project: Project, private val sc
             }
         }
     }
+
+    override fun dispose() = Unit
 }

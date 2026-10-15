@@ -39,7 +39,7 @@ internal class EditorTracker(
 
     private fun add(editor: Editor) {
         val tracked = editor.document === document && editor.project === project &&
-            editor.editorKind == EditorKind.MAIN_EDITOR && !editor.isDisposed
+            editor.editorKind in FILE_EDITORS && !editor.isDisposed
         if (!tracked || editor in attached) return
         val scope = Disposer.newDisposable(this, "pairing editor")
         attached[editor] = scope
@@ -52,5 +52,9 @@ internal class EditorTracker(
 
     override fun dispose() {
         attached.clear()
+    }
+
+    private companion object {
+        val FILE_EDITORS = setOf(EditorKind.MAIN_EDITOR, EditorKind.UNTYPED)
     }
 }

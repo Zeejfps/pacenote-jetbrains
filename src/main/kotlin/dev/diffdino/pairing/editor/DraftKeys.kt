@@ -21,6 +21,6 @@ internal object DraftKeys {
         val project = e.project ?: return null
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return null
         if (LookupManager.getActiveLookup(editor) != null) return null
-        return PairingEditorService.ifCreated(project)?.draftIn(editor)
+        return PairingEditorService.draftShownIn(project, editor)
     }
 }

@@ -17,6 +17,10 @@
 
     <!-- Editor: drafts and spotlights drawn in the project's editors -->
     <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceInterface="dev.diffdino.pairing.model.PairingPresentation"
+                        serviceImplementation="dev.diffdino.pairing.editor.EditorPairingPresentation"/>
+        <projectService serviceInterface="dev.diffdino.pairing.model.CodeSpotlights"
+                        serviceImplementation="dev.diffdino.pairing.editor.EditorCodeSpotlights"/>
         <projectService serviceImplementation="dev.diffdino.pairing.editor.PairingEditorService"/>
     </extensions>
 

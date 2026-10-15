@@ -2,6 +2,10 @@ package dev.diffdino.pairing.editor
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadConstraint
+import com.intellij.openapi.application.constrainedReadAction
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
@@ -19,7 +23,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.util.io.FileUtilRt
+import com.intellij.psi.PsiManager
 import dev.diffdino.pairing.model.DraftPlace
 import dev.diffdino.pairing.model.EditorCaret
 import dev.diffdino.pairing.model.FileLine
@@ -41,43 +45,38 @@ import kotlinx.coroutines.withContext
  * edits included, through the IDE's own code model, and shown by opening the file in this project.
  * Never switches projects. [scope] ends everything it listens to and draws.
  */
-internal class EditorPairingPresentation(private val project: Project, private val scope: Disposable) : PairingPresentation {
+class EditorPairingPresentation(private val project: Project) : PairingPresentation, Disposable {
+    private val scope: Disposable get() = this
     private val places = RepoFilePlaces(project)
     private val caretState = MutableStateFlow<EditorCaret?>(null)
     private val needsState = MutableStateFlow<List<String>>(emptyList())
     private var shown: ShownDraft? = null
+    private var closed = false
 
     override val caret: StateFlow<EditorCaret?> get() = caretState
 
     override val draftNeeds: StateFlow<List<String>> get() = needsState
 
     init {
-        followCaret()
+        ApplicationManager.getApplication().invokeLater({ followCaret() }, ModalityState.any(), { closed })
     }
 
     /** The draft drawn in [editor], if there is one. */
-    fun draftIn(editor: Editor): ShownDraft? = shown?.takeIf { it.isShownIn(editor) }
+    internal fun draftIn(editor: Editor): ShownDraft? = shown?.takeIf { it.isShownIn(editor) }
 
     override suspend fun locate(target: StopTarget): StopPlacement = withContext(Dispatchers.Default) {
         val absolute = places.absolute(target.path)
             ?: return@withContext StopPlacement.Missed(StopMiss.OutsideRepository(target.path))
         val file = places.fileAt(absolute, refresh = true)
             ?: return@withContext StopResolver.resolve(absolute, null, null, target)
-        unreadable(file)?.let { return@withContext StopPlacement.Missed(StopMiss.Unreadable(target.path, it)) }
+        places.whyUnreadable(file)?.let { return@withContext StopPlacement.Missed(StopMiss.Unreadable(target.path, it)) }
 
-        readAction {
+        constrainedReadAction(ReadConstraint.withDocumentsCommitted(project)) {
             val document = FileDocumentManager.getInstance().getDocument(file)
-                ?: return@readAction StopPlacement.Missed(StopMiss.Unreadable(target.path, "it has no text"))
-            val outline = com.intellij.psi.PsiManager.getInstance(project).findFile(file)?.let { DeclarationOutline.of(it, document) }
+                ?: return@constrainedReadAction StopPlacement.Missed(StopMiss.Unreadable(target.path, "it has no text"))
+            val outline = PsiManager.getInstance(project).findFile(file)?.let { DeclarationOutline.of(it, document) }
             StopResolver.resolve(absolute, document.text, outline, target)
         }
-    }
-
-    private fun unreadable(file: com.intellij.openapi.vfs.VirtualFile): String? = when {
-        file.isDirectory -> "it is a directory"
-        FileUtilRt.isTooLarge(file.length) -> "the file is too large to open"
-        file.fileType.isBinary -> "it is a binary file"
-        else -> null
     }
 
     override suspend fun readText(location: StopLocation): String? = readAction {
@@ -187,5 +186,9 @@ internal class EditorPairingPresentation(private val project: Project, private v
             editor.document.positionOf(editor.caretModel.primaryCaret.offset),
             editor.selectionModel.selectedText.orEmpty(),
         )
+    }
+
+    override fun dispose() {
+        closed = true
     }
 }

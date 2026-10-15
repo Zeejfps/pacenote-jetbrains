@@ -1,6 +1,5 @@
 package dev.diffdino.pairing.editor
 
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.editor.Editor
@@ -9,21 +8,17 @@ import dev.diffdino.pairing.model.CodeSpotlights
 import dev.diffdino.pairing.model.PairingPresentation
 
 /** The editor side of the pairing loop for one project: what the loop draws drafts with, and what the agent points at code with. */
-class PairingEditorService(project: Project) : Disposable {
-    private val editorPresentation = EditorPairingPresentation(project, this)
-    private val editorSpotlights = EditorCodeSpotlights(project, this)
+class PairingEditorService(private val project: Project) {
+    val presentation: PairingPresentation get() = project.service<PairingPresentation>()
 
-    val presentation: PairingPresentation get() = editorPresentation
+    val spotlights: CodeSpotlights get() = project.service<CodeSpotlights>()
 
-    val spotlights: CodeSpotlights get() = editorSpotlights
-
-    internal fun draftIn(editor: Editor): ShownDraft? = editorPresentation.draftIn(editor)
-
-    override fun dispose() = Unit
+    internal fun draftIn(editor: Editor): ShownDraft? = (presentation as? EditorPairingPresentation)?.draftIn(editor)
 
     companion object {
         fun getInstance(project: Project): PairingEditorService = project.service()
 
-        internal fun ifCreated(project: Project): PairingEditorService? = project.serviceIfCreated()
+        internal fun draftShownIn(project: Project, editor: Editor): ShownDraft? =
+            (project.serviceIfCreated<PairingPresentation>() as? EditorPairingPresentation)?.draftIn(editor)
     }
 }
