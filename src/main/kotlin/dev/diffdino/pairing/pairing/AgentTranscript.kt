@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.pairing
 
+import dev.diffdino.pairing.acp.AcpFileEdit
 import dev.diffdino.pairing.model.CodeQuote
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,9 +81,10 @@ class AgentTranscript {
         details: String,
         preview: List<EditPreviewLine> = emptyList(),
         allowFiles: (() -> Unit)? = null,
+        edits: List<AcpFileEdit> = emptyList(),
     ): PendingToolApproval {
         val pending = PendingToolApproval(title, details)
-        add(PairingMessage.Approval(pending, preview, allowFiles?.let { FileAllowance(pending, it) }))
+        add(PairingMessage.Approval(pending, preview, allowFiles?.let { FileAllowance(pending, it) }, edits))
         return pending
     }
 

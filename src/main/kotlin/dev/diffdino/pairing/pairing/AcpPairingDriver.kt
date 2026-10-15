@@ -231,7 +231,7 @@ class AcpPairingDriver private constructor(
         val isEdit = request.kind == AcpToolKind.Edit && request.paths.isNotEmpty()
         if (isEdit && allowedEdits.cover(request.paths)) {
             val what = request.title.ifEmpty { request.paths.joinToString(", ") }
-            conversation.transcript.add(PairingMessage.AllowedEdit(what, EditPreview.of(request.edits, conversation.root)))
+            conversation.transcript.add(PairingMessage.AllowedEdit(what, EditPreview.of(request.edits, conversation.root), request.edits))
             return null
         }
 
@@ -240,6 +240,7 @@ class AcpPairingDriver private constructor(
             request.command ?: request.kind.name,
             EditPreview.of(request.edits, conversation.root),
             if (isEdit) ({ allowedEdits.grant(request.paths) }) else null,
+            request.edits,
         )
     }
 
