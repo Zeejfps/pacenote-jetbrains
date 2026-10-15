@@ -7,6 +7,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorCustomElementRenderer
 import com.intellij.openapi.editor.HighlighterColors
 import com.intellij.openapi.editor.Inlay
+import com.intellij.openapi.editor.VisualPosition
 import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.openapi.editor.colors.EditorColorsScheme
 import com.intellij.openapi.editor.colors.EditorFontType
@@ -29,8 +30,9 @@ import javax.swing.Icon
 internal data class GhostRow(val text: String, val runs: List<ColoredRun>, val missing: List<IntRange>)
 
 /**
- * Draws the agent's code between real lines of an editor, read-only and tinted, with the pills that
- * take it, and tells where those pills are so a click can be matched to one.
+ * Draws the agent's code between real lines of an editor, read-only and tinted, in the file's own
+ * columns, with the pills that take it after its last line, and tells where those pills are so a
+ * click can be matched to one.
  */
 internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElementRenderer {
     var rows: List<GhostRow> = emptyList()
@@ -41,10 +43,10 @@ internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElem
         val widest = rows.maxOfOrNull { layout(it.text, fm).last() } ?: 0
         val pills = pillRects(Rectangle(0, 0, 0, 0)).maxOfOrNull { it.second.x + it.second.width } ?: 0
         val visible = editor.scrollingModel.visibleArea.width
-        return maxOf(widest + 2 * padding(), pills + padding(), visible, 1)
+        return maxOf(textX() + widest + padding(), pills + padding(), visible, 1)
     }
 
-    override fun calcHeightInPixels(inlay: Inlay<*>): Int = headerHeight() + rows.size * editor.lineHeight + JBUI.scale(2)
+    override fun calcHeightInPixels(inlay: Inlay<*>): Int = maxOf(1, rows.size) * editor.lineHeight
 
     override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
         val g2 = g.create() as Graphics2D
@@ -66,8 +68,8 @@ internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElem
     private fun paintRows(g: Graphics2D, region: Rectangle, scheme: EditorColorsScheme) {
         UISettings.setupAntialiasing(g)
         val fm = codeMetrics()
-        val top = region.y + headerHeight()
-        val originX = region.x + padding()
+        val top = region.y
+        val originX = textX()
         for ((index, row) in rows.withIndex()) {
             val xs = layout(row.text, fm)
             val rowTop = top + index * editor.lineHeight
@@ -154,13 +156,15 @@ internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElem
     fun pillRect(command: DraftCommand, bounds: Rectangle): Rectangle? =
         pillRects(bounds).firstOrNull { it.first == command }?.second
 
-    // Where each pill is, from the left of the header; the origin is that of the block.
+    // Where each pill is: after the end of the draft's last line.
     private fun pillRects(region: Rectangle): List<Pair<DraftCommand, Rectangle>> {
-        val height = headerHeight() - JBUI.scale(4)
-        var x = region.x + padding()
+        val last = rows.lastOrNull() ?: return emptyList()
+        val height = editor.lineHeight - JBUI.scale(4)
+        val y = region.y + (rows.size - 1) * editor.lineHeight + JBUI.scale(2)
+        var x = textX() + layout(last.text, codeMetrics()).last() + pillLead()
         return PILLS.map { command ->
             val width = 2 * pillPadding() + iconsOf(command).sumOf { it.iconWidth }
-            val rect = Rectangle(x, region.y + JBUI.scale(2), width, height)
+            val rect = Rectangle(x, y, width, height)
             x += width + pillSpacing()
             command to rect
         }
@@ -172,7 +176,8 @@ internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElem
         DraftCommand.Next -> listOf(AllIcons.General.ArrowRight)
     }
 
-    private fun headerHeight(): Int = editor.lineHeight + JBUI.scale(4)
+    // Where the editor's text starts, so the draft's columns line up with the file's.
+    private fun textX(): Int = editor.visualPositionToXY(VisualPosition(0, 0)).x
 
     private fun codeMetrics(): FontMetrics = editor.contentComponent.getFontMetrics(editor.colorsScheme.getFont(EditorFontType.PLAIN))
 
@@ -195,6 +200,8 @@ internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElem
             ?: JBColor(Color(0xE6A700), Color(0xD9A343))
 
     private fun padding() = JBUI.scale(8)
+
+    private fun pillLead() = JBUI.scale(16)
 
     private fun pillPadding() = JBUI.scale(6)
 

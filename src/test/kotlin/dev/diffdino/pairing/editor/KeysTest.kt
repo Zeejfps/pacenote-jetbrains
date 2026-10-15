@@ -118,8 +118,9 @@ internal class KeysTest : PairingEditorTestBase() {
     fun testDraftHasAcceptPillsWhoseTooltipsNameTheKeys() {
         showDraft()
         val renderer = blocks().single()
-        val bounds = Rectangle(0, 0, 800, 60)
-        val hits = (0 until 800).mapNotNull { x -> renderer.pillAt(java.awt.Point(x, 12), bounds) }.distinct()
+        val bounds = Rectangle(0, 0, 3000, renderer.rows.size * editor.lineHeight)
+        val lastRow = (renderer.rows.size - 1) * editor.lineHeight + editor.lineHeight / 2
+        val hits = (0 until 3000).mapNotNull { x -> renderer.pillAt(java.awt.Point(x, lastRow), bounds) }.distinct()
         assertEquals(listOf(DraftCommand.Accept, DraftCommand.AcceptAndNext), hits)
         val keys = com.intellij.openapi.keymap.KeymapUtil.getFirstKeyboardShortcutText(DraftCommand.Accept.actionId)
         assertTrue(keys.isNotEmpty())
@@ -134,7 +135,7 @@ internal class KeysTest : PairingEditorTestBase() {
         try {
             val region = Rectangle(0, 0, inlay.renderer.calcWidthInPixels(inlay), inlay.renderer.calcHeightInPixels(inlay))
             inlay.renderer.paint(inlay, g as java.awt.Graphics, region, com.intellij.openapi.editor.markup.TextAttributes())
-            assertTrue(region.height > editor.lineHeight)
+            assertEquals((inlay.renderer as DraftBlockRenderer).rows.size * editor.lineHeight, region.height)
         } finally {
             g.dispose()
         }
