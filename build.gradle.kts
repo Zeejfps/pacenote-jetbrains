@@ -24,6 +24,8 @@ dependencies {
         val local = providers.gradleProperty("localIdePath").orNull
         if (local != null && file(local).exists()) local(local) else webstorm("2026.2.3")
         bundledPlugin("Git4Idea")
+        bundledModule("intellij.platform.vcs.dvcs")
+        bundledModule("intellij.platform.vcs.dvcs.impl")
         bundledPlugin("JavaScript")
         testFramework(TestFrameworkType.Platform)
     }
