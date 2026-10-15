@@ -7,20 +7,25 @@ import javax.swing.JScrollPane
 import javax.swing.SwingUtilities
 
 /**
- * Keeps a scroll pane at the end of what grows in it, until the user scrolls up from the end; it
- * follows again once they are back there, or when [pin] says so.
+ * Keeps a scroll pane at the end of what grows in it, until the user scrolls up from the end with
+ * the wheel or the scrollbar; it follows again once they are back there, or when [pin] says so.
+ * Layout moving the view never counts as the user leaving the end.
  */
 class StickToBottom(private val pane: JScrollPane) {
     private var pinned = true
-    private var lastMaximum = 0
 
     init {
         val bar = pane.verticalScrollBar
         bar.addAdjustmentListener {
-            val maximum = bar.maximum
-            if (maximum == lastMaximum) pinned = atEnd()
-            lastMaximum = maximum
+            if (atEnd()) pinned = true
+            else if (it.valueIsAdjusting) pinned = false
         }
+        pane.addMouseWheelListener { if (it.wheelRotation < 0) pinned = false }
+        pane.viewport.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent) {
+                if (pinned) scrollToEnd()
+            }
+        })
     }
 
     /** Follows [content]'s growth. */
@@ -45,6 +50,7 @@ class StickToBottom(private val pane: JScrollPane) {
 
     private fun scrollToEnd() {
         SwingUtilities.invokeLater {
+            if (!pinned) return@invokeLater
             val bar = pane.verticalScrollBar
             bar.value = bar.maximum
         }

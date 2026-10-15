@@ -55,12 +55,12 @@ class ChatFooter(private val conversation: AgentConversation, lifetime: Lifetime
         scroll.isOpaque = false
         scroll.viewport.isOpaque = false
         composer.add(scroll, BorderLayout.CENTER)
-        composer.add(JPanel(BorderLayout()).apply {
+        add(composer, BorderLayout.CENTER)
+        add(JPanel(BorderLayout()).apply {
             isOpaque = false
-            border = JBUI.Borders.empty(0, 8, 4, 0)
+            border = JBUI.Borders.emptyLeft(8)
             add(send, BorderLayout.SOUTH)
         }, BorderLayout.EAST)
-        add(composer, BorderLayout.CENTER)
 
         bindKeys(input)
         input.addFocusListener(object : FocusAdapter() {
