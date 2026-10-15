@@ -1,0 +1,17 @@
+<idea-plugin>
+    <id>dev.diffdino.pairing</id>
+    <name>DiffDino Pairing</name>
+    <vendor>DiffDino</vendor>
+    <description><![CDATA[
+    Pair programming with an AI agent over the Agent Client Protocol: the agent navigates, you write.
+    Chat with approvals, pairing sessions with stops, and agent drafts shown in the editor to accept.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>Git4Idea</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="DiffDino Agent" anchor="right" icon="AllIcons.Toolwindows.ToolWindowMessages"
+                    factoryClass="dev.diffdino.pairing.ui.AgentToolWindowFactory"/>
+    </extensions>
+</idea-plugin>
