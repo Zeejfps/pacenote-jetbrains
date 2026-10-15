@@ -13,7 +13,7 @@
     <resource-bundle>messages.DiffDinoBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="DiffDino Agent" anchor="right" icon="AllIcons.Toolwindows.ToolWindowMessages"
+        <toolWindow id="DiffDino Agent" anchor="right" icon="/icons/dino.png"
                     factoryClass="dev.diffdino.pairing.ui.AgentToolWindowFactory"/>
         <applicationService serviceImplementation="dev.diffdino.pairing.settings.AgentSettings"/>
         <applicationService serviceImplementation="dev.diffdino.pairing.mcp.AgentToolServer"/>
