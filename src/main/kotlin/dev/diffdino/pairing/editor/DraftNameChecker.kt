@@ -80,7 +80,7 @@ internal object DraftNameChecker {
         if (resolves(reference)) return null
 
         val line = lineStarts.indexOfLast { it <= start }
-        return MissingName(line - splice.keptAbove - 1, start - lineStarts[line], end - lineStarts[line], name)
+        return MissingName(line - splice.keptAbove, start - lineStarts[line], end - lineStarts[line], name)
     }
 
     // A member of something else: whether it exists is that thing's business, and often unknowable.

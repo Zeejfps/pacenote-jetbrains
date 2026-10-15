@@ -22,6 +22,7 @@
         <projectService serviceInterface="dev.diffdino.pairing.model.CodeSpotlights"
                         serviceImplementation="dev.diffdino.pairing.editor.EditorCodeSpotlights"/>
         <projectService serviceImplementation="dev.diffdino.pairing.editor.PairingEditorService"/>
+        <actionPromoter implementation="dev.diffdino.pairing.editor.DraftActionPromoter"/>
     </extensions>
 
     <actions>

@@ -43,6 +43,15 @@ internal abstract class PairingEditorTestBase : BasePlatformTestCase() {
         }
     """.trimIndent()
 
+    override fun tearDown() {
+        try {
+            presentation.clearDraft()
+            editorService.spotlights.clear()
+        } finally {
+            super.tearDown()
+        }
+    }
+
     internal val editorService: PairingEditorService get() = PairingEditorService.getInstance(project)
 
     protected val presentation: PairingPresentation get() = editorService.presentation
