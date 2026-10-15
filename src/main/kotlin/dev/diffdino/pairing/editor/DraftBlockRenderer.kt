@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.editor
 
+import com.intellij.icons.AllIcons
 import com.intellij.ide.ui.UISettings
 import com.intellij.openapi.diff.DiffColors
 import com.intellij.openapi.editor.Editor
@@ -10,7 +11,6 @@ import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.openapi.editor.colors.EditorColorsScheme
 import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.editor.markup.TextAttributes
-import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.GraphicsUtil
@@ -23,6 +23,7 @@ import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Point
 import java.awt.Rectangle
+import javax.swing.Icon
 
 /** One line of a draft as it is drawn: its text, its colours, and the stretches of it that name something undeclared. */
 internal data class GhostRow(val text: String, val runs: List<ColoredRun>, val missing: List<IntRange>)
@@ -138,43 +139,38 @@ internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElem
         GraphicsUtil.setupAAPainting(g)
         val foreground = scheme.defaultForeground
         val background = scheme.defaultBackground
-        val bold = pillFont().deriveFont(Font.BOLD)
-        val fm = editor.contentComponent.getFontMetrics(bold)
         for ((command, rect) in pillRects(region)) {
             g.color = ColorUtil.mix(background, foreground, if (command == hovered) PILL_HOVER_MIX else PILL_MIX)
             g.fillRoundRect(rect.x, rect.y, rect.width, rect.height, rect.height, rect.height)
-            val baseline = rect.y + (rect.height - fm.height) / 2 + fm.ascent
-            g.font = bold
-            g.color = foreground
-            g.drawString(command.label, rect.x + pillPadding(), baseline)
-            val hint = hintOf(command)
-            if (hint.isNotEmpty()) {
-                g.font = pillFont()
-                g.color = ColorUtil.mix(background, foreground, HINT_MIX)
-                g.drawString(hint, rect.x + pillPadding() + fm.stringWidth(command.label) + pillGap(), baseline)
+            var x = rect.x + pillPadding()
+            for (icon in iconsOf(command)) {
+                icon.paintIcon(editor.contentComponent, g, x, rect.y + (rect.height - icon.iconHeight) / 2)
+                x += icon.iconWidth
             }
         }
     }
 
+    /** Where a pill is in the editor, given where this block's inlay is; null for a command with no pill. */
+    fun pillRect(command: DraftCommand, bounds: Rectangle): Rectangle? =
+        pillRects(bounds).firstOrNull { it.first == command }?.second
+
     // Where each pill is, from the left of the header; the origin is that of the block.
     private fun pillRects(region: Rectangle): List<Pair<DraftCommand, Rectangle>> {
-        val bold = editor.contentComponent.getFontMetrics(pillFont().deriveFont(Font.BOLD))
-        val plain = editor.contentComponent.getFontMetrics(pillFont())
         val height = headerHeight() - JBUI.scale(4)
         var x = region.x + padding()
-        return DraftCommand.entries.map { command ->
-            val hint = hintOf(command)
-            val hintWidth = if (hint.isEmpty()) 0 else pillGap() + plain.stringWidth(hint)
-            val width = 2 * pillPadding() + bold.stringWidth(command.label) + hintWidth
+        return PILLS.map { command ->
+            val width = 2 * pillPadding() + iconsOf(command).sumOf { it.iconWidth }
             val rect = Rectangle(x, region.y + JBUI.scale(2), width, height)
             x += width + pillSpacing()
             command to rect
         }
     }
 
-    private fun hintOf(command: DraftCommand): String = KeymapUtil.getFirstKeyboardShortcutText(command.actionId)
-
-    private fun pillFont(): Font = JBUI.Fonts.smallFont()
+    private fun iconsOf(command: DraftCommand): List<Icon> = when (command) {
+        DraftCommand.Accept -> listOf(AllIcons.Actions.Checked)
+        DraftCommand.AcceptAndNext -> listOf(AllIcons.Actions.Checked, AllIcons.General.ArrowRight)
+        DraftCommand.Next -> listOf(AllIcons.General.ArrowRight)
+    }
 
     private fun headerHeight(): Int = editor.lineHeight + JBUI.scale(4)
 
@@ -200,16 +196,14 @@ internal class DraftBlockRenderer(private val editor: Editor) : EditorCustomElem
 
     private fun padding() = JBUI.scale(8)
 
-    private fun pillPadding() = JBUI.scale(8)
-
-    private fun pillGap() = JBUI.scale(6)
+    private fun pillPadding() = JBUI.scale(6)
 
     private fun pillSpacing() = JBUI.scale(6)
 
     private companion object {
+        val PILLS = listOf(DraftCommand.Accept, DraftCommand.AcceptAndNext)
         const val TINT_ALPHA = 0.65
         const val PILL_MIX = 0.1
         const val PILL_HOVER_MIX = 0.22
-        const val HINT_MIX = 0.55
     }
 }

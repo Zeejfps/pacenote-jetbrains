@@ -15,7 +15,6 @@ import dev.diffdino.pairing.ui.support.DiffDinoBundle
 import dev.diffdino.pairing.ui.support.Lifetime
 import dev.diffdino.pairing.ui.support.ReactiveSlot
 import dev.diffdino.pairing.ui.support.RoundedCard
-import dev.diffdino.pairing.ui.support.ChatButton
 import dev.diffdino.pairing.ui.support.WrappingHtmlPane
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -67,9 +66,8 @@ class StopCard(private val session: PairingSession, open: OpenStop, lifetime: Li
                 font = JBFont.small().asBold()
                 foreground = ChatColors.accent
             }, BorderLayout.WEST)
-            add(ChatButton(DiffDinoBundle.message("stop.show.change")).apply {
+            add(ActionLink(DiffDinoBundle.message("stop.show.change")) { session.revealStop() }.apply {
                 toolTipText = DiffDinoBundle.message("stop.go.to")
-                addActionListener { session.revealStop() }
             }, BorderLayout.EAST)
         })
         add(WrappingHtmlPane().also { Disposer.register(lifetime, it); it.showPlain(stop.title, bold = true) })

@@ -115,13 +115,15 @@ internal class KeysTest : PairingEditorTestBase() {
         assertEquals("DiffDino.AcceptDraftAndNext", press(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK).firstOrNull())
     }
 
-    fun testPillsShowTheKeymapsShortcuts() {
+    fun testDraftHasAcceptPillsWhoseTooltipsNameTheKeys() {
         showDraft()
         val renderer = blocks().single()
         val bounds = Rectangle(0, 0, 800, 60)
         val hits = (0 until 800).mapNotNull { x -> renderer.pillAt(java.awt.Point(x, 12), bounds) }.distinct()
-        assertEquals(DraftCommand.entries.toList(), hits)
-        assertTrue(com.intellij.openapi.keymap.KeymapUtil.getFirstKeyboardShortcutText(DraftCommand.Accept.actionId).isNotEmpty())
+        assertEquals(listOf(DraftCommand.Accept, DraftCommand.AcceptAndNext), hits)
+        val keys = com.intellij.openapi.keymap.KeymapUtil.getFirstKeyboardShortcutText(DraftCommand.Accept.actionId)
+        assertTrue(keys.isNotEmpty())
+        assertEquals("Accept ($keys)", DraftCommand.Accept.tooltip)
     }
 
     fun testBlockPaintsWithoutError() {

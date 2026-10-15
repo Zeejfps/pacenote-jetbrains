@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.editor
 
+import com.intellij.codeInsight.hint.HintUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.Inlay
@@ -9,7 +10,11 @@ import com.intellij.openapi.editor.event.EditorMouseListener
 import com.intellij.openapi.editor.event.EditorMouseMotionListener
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.util.Disposer
+import com.intellij.ui.HintHint
+import com.intellij.ui.LightweightHint
+import com.intellij.util.ui.JBUI
 import java.awt.Cursor
+import java.awt.Point
 import java.awt.event.MouseEvent
 
 /** Where a draft's block hangs against the line it is drawn at. */
@@ -27,6 +32,7 @@ internal class DraftBlock(
     private val renderer = DraftBlockRenderer(editor)
     private var inlay: Inlay<DraftBlockRenderer>? = null
     private var shownWidth = 0
+    private var tip: LightweightHint? = null
 
     init {
         editor.addEditorMouseListener(
@@ -89,10 +95,23 @@ internal class DraftBlock(
         if (renderer.hovered == command) return
         renderer.hovered = command
         (editor as? EditorEx)?.setCustomCursor(this, command?.let { Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) })
+        tip?.hide()
+        tip = command?.let(::showTip)
         inlay?.repaint()
     }
 
+    private fun showTip(command: DraftCommand): LightweightHint? {
+        val bounds = inlay?.takeIf { it.isValid }?.bounds ?: return null
+        val pill = renderer.pillRect(command, bounds) ?: return null
+        val label = HintUtil.createInformationLabel(command.tooltip)
+        val at = Point(pill.x, pill.y - label.preferredSize.height - JBUI.scale(4))
+        val component = editor.contentComponent
+        return LightweightHint(label).also { it.show(component, at.x, at.y, component, HintHint(component, at)) }
+    }
+
     private fun remove() {
+        tip?.hide()
+        tip = null
         inlay?.let(Disposer::dispose)
         inlay = null
     }
