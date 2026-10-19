@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.editor
 
+import dev.diffdino.pairing.model.DeclarationSite
 import dev.diffdino.pairing.model.FileLine
 import dev.diffdino.pairing.model.StopLocation
 import dev.diffdino.pairing.model.StopMiss
@@ -32,6 +33,7 @@ internal object StopResolver {
                     lineAt(lines, line),
                     FileLine(found.endLine.coerceIn(line, lines.size)),
                     lines,
+                    found.namesakes,
                 ),
             )
         }
@@ -49,7 +51,7 @@ internal object StopResolver {
         )
     }
 
-    private data class Found(val at: TextPosition, val endLine: Int)
+    private data class Found(val at: TextPosition, val endLine: Int, val namesakes: List<DeclarationSite> = emptyList())
 
     private data class Declaration(val path: String, val node: OutlineNode, val parentEnd: Int)
 
@@ -60,8 +62,11 @@ internal object StopResolver {
         if (outline != null) {
             val named = declarations(outline)
             for (ignoreCase in listOf(false, true)) {
-                val match = named.firstOrNull { matches(it.path, wanted, ignoreCase) } ?: continue
-                return Found(match.node.nameAt, lastLineOf(match.node, match.parentEnd, lines))
+                val sites = named.filter { matches(it.path, wanted, ignoreCase) }
+                    .map { DeclarationSite(it.node.nameAt, FileLine(lastLineOf(it.node, it.parentEnd, lines))) }
+                    .distinct()
+                val first = sites.firstOrNull() ?: continue
+                return Found(first.at, first.lastLine.value, sites.drop(1))
             }
         }
 

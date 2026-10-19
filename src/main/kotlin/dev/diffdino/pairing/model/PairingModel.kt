@@ -38,14 +38,23 @@ sealed interface StopLocation {
     val absolutePath: String
 
     /** On the declaration's name. [lastLine] is where the declaration ends; [lines] are the file's,
-     * as it was found. */
+     * as it was found. [namesakes] are the other declarations the same name fits, in file order. */
     data class OnSymbol(
         override val absolutePath: String,
         val at: TextPosition,
         val lineText: String,
         val lastLine: FileLine,
         val lines: List<String>,
-    ) : StopLocation
+        val namesakes: List<DeclarationSite> = emptyList(),
+    ) : StopLocation {
+        /** The same file, on the namesake at [site]; this declaration becomes one of its namesakes. */
+        fun on(site: DeclarationSite): OnSymbol = copy(
+            at = site.at,
+            lineText = lines.getOrElse(site.at.line.value - 1) { "" },
+            lastLine = site.lastLine,
+            namesakes = (namesakes - site + DeclarationSite(at, lastLine)).sortedBy { it.at },
+        )
+    }
 
     /** A declaration still to be written: the end of the one it goes after. */
     data class Insertion(
@@ -58,6 +67,9 @@ sealed interface StopLocation {
     /** The file doesn't exist yet, or has nothing in it: the agent's code is its first block. */
     data class NewFile(override val absolutePath: String) : StopLocation
 }
+
+/** Where a declaration is: on its name, through its last line. */
+data class DeclarationSite(val at: TextPosition, val lastLine: FileLine)
 
 /** Why a stop could not be placed; the agent is told so and the stop doesn't open. */
 sealed interface StopMiss {
@@ -97,6 +109,9 @@ sealed interface DraftSpan {
 
     /** In after this line, 1-based. */
     data class After(val line: Int) : DraftSpan
+
+    /** In place of these lines of the declaration, quoted as they read in the file. */
+    data class Quoted(val text: String) : DraftSpan
 }
 
 /** The agent's code for a stop, as it sent it. */

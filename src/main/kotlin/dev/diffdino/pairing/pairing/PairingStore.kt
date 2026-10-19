@@ -147,18 +147,13 @@ class PairingStore(
     private suspend fun openStopLocked(
         target: StopTarget, title: String, reason: String, request: DraftRequest, replace: Boolean,
     ): StopOpening {
-        val location = when (val placement = presentation.locate(target)) {
-            is StopPlacement.Placed -> placement.location
-            is StopPlacement.Missed -> return StopOpening.Refused(StopMiss.describe(placement.miss))
-        }
-
-        val draft = when (val placement = DraftPlacing.place(location, request)) {
-            is DraftPlacement.Placed -> placement.draft
-            is DraftPlacement.Refused -> return StopOpening.Refused(placement.message)
+        var placement = when (val placed = place(target, request)) {
+            is DraftPlacement.Placed -> placed
+            is DraftPlacement.Refused -> return StopOpening.Refused(placed.message)
         }
 
         var created: String? = null
-        if (location is StopLocation.NewFile) {
+        if (placement.location is StopLocation.NewFile) {
             when (val ensured = workspace.ensureEmptyFile(target.path)) {
                 FileCreation.Created -> created = target.path
                 FileCreation.AlreadyEmpty -> created = if (_stop.value?.createdFile == target.path) target.path else null
@@ -174,30 +169,62 @@ class PairingStore(
             }
         }
 
-        if (!isLive) {
+        movedOn(replace)?.let {
             takeBack(created)
-            return StopOpening.Refused("The session has ended.")
+            return it
         }
 
-        if (_activity.value != StopActivity.Idle || (_stop.value != null && !replace)) {
-            takeBack(created)
-            return StopOpening.Refused("The user moved on while the stop was being placed. End your turn: their move comes to you next.")
+        // The draft is drawn only into the text it was placed in. The user may have typed since it
+        // was found; then it is found again, in the file as it is now.
+        val actions = SuggestionActions(
+            accept = { lifetime.launch { accept() } },
+            acceptAndNext = { lifetime.launch { acceptAndNext() } },
+            next = { lifetime.launch { done() } },
+        )
+        var attempts = 1
+        while (!presentation.showDraft(placement.location, placement.draft, actions)) {
+            if (attempts++ == PLACING_ATTEMPTS) {
+                takeBack(created)
+                return StopOpening.Refused("The file kept changing while the stop was being placed. Send the stop again.")
+            }
+
+            placement = when (val again = place(target, request)) {
+                is DraftPlacement.Placed -> again
+                is DraftPlacement.Refused -> {
+                    takeBack(created)
+                    return StopOpening.Refused("The user changed the file while the stop was being placed. ${again.message}")
+                }
+            }
+            movedOn(replace)?.let {
+                takeBack(created)
+                return it
+            }
         }
 
         val previous = _stop.value?.createdFile
         if (previous != null && previous != created) takeBack(previous)
         val stop = PairingStop(++stopsSent, target, title, reason)
-        val opened = OpenStop(stop, location, baseline, draft, DraftState.Offered, created)
+        val opened = OpenStop(stop, placement.location, baseline, placement.draft, DraftState.Offered, created)
         _stop.value = opened
-        presentation.revealDraft(location, draft)
-        presentation.showDraft(location, draft, SuggestionActions(
-            accept = { lifetime.launch { accept() } },
-            acceptAndNext = { lifetime.launch { acceptAndNext() } },
-            next = { lifetime.launch { done() } },
-        ))
+        presentation.revealDraft(placement.location, placement.draft)
         transcript.closeNarration()
         handOver()
         return StopOpening.Opened(opened)
+    }
+
+    // The stop's declaration found in the file as it is now, and the agent's code placed in it.
+    private suspend fun place(target: StopTarget, request: DraftRequest): DraftPlacement =
+        when (val found = presentation.locate(target)) {
+            is StopPlacement.Placed -> DraftPlacing.place(found.location, request)
+            is StopPlacement.Missed -> DraftPlacement.Refused(StopMiss.describe(found.miss))
+        }
+
+    // Why a stop being placed can't open any more, or null while it can.
+    private fun movedOn(replace: Boolean): StopOpening.Refused? = when {
+        !isLive -> StopOpening.Refused("The session has ended.")
+        _activity.value != StopActivity.Idle || (_stop.value != null && !replace) ->
+            StopOpening.Refused("The user moved on while the stop was being placed. End your turn: their move comes to you next.")
+        else -> null
     }
 
     /** The agent finished: the stop closes, the summary stays up. */
@@ -403,6 +430,9 @@ class PairingStore(
     }
 
     companion object {
+        /** How many times a stop is placed again when the user keeps typing while it is placed. */
+        private const val PLACING_ATTEMPTS = 3
+
         fun isLive(phase: PairingPhase): Boolean = when (phase) {
             PairingPhase.Starting, is PairingPhase.Running -> true
             is PairingPhase.Disconnected, is PairingPhase.Ended, is PairingPhase.Failed -> false

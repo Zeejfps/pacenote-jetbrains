@@ -82,6 +82,34 @@ class AgentConversationTest {
     }
 
     @Test
+    fun aStopPlacedByQuotedLines_echoesTheLinesItReplaces() = ui.run {
+        val conversation = sessions.openChat(AgentPreset.ClaudeCode)
+        conversation.markRunning()
+        call("pairing_start", """{"goal":"Add a retry"}""")
+
+        val opened = call("pairing_stop",
+            """{"path":"src/Client.cs","symbol":"Fetch","title":"Retry","reason":"Because.","code":"retry();","replaces":"line 12"}""")
+
+        assertFalse(opened.content, opened.isError)
+        val reply = Json.parseToJsonElement(opened.content).jsonObject
+        assertEquals("lines 12-12", (reply["code_replaces"] as JsonPrimitive).content)
+        assertEquals("    12\tline 12", (reply["replaced_text"] as JsonPrimitive).content)
+    }
+
+    @Test
+    fun aStopTakesOneWayOfPlacingItsCode() = ui.run {
+        val conversation = sessions.openChat(AgentPreset.ClaudeCode)
+        conversation.markRunning()
+        call("pairing_start", """{"goal":"Add a retry"}""")
+
+        val opened = call("pairing_stop",
+            """{"path":"src/Client.cs","symbol":"Fetch","title":"Retry","reason":"Because.","code":"x","replaces":"line 12","after_line":3}""")
+
+        assertTrue(opened.isError)
+        assertEquals("Pass one of replaces, lines and after_line.", opened.content)
+    }
+
+    @Test
     fun aSessionThatEnds_leavesItsOutcomeInTheTranscript_andTheConversationGoesOn() = ui.run {
         val conversation = sessions.openChat(AgentPreset.ClaudeCode)
         conversation.markRunning()

@@ -1,5 +1,7 @@
 package dev.diffdino.pairing.editor
 
+import dev.diffdino.pairing.model.DeclarationSite
+import dev.diffdino.pairing.model.FileLine
 import dev.diffdino.pairing.model.StopLocation
 import dev.diffdino.pairing.model.StopMiss
 import dev.diffdino.pairing.model.StopPlacement
@@ -17,6 +19,15 @@ internal class LocateTest : PairingEditorTestBase() {
         assertEquals(4, found.lastLine.value)
         assertEquals("  bar(x: number): number {", found.lineText)
         assertEquals(sample.split('\n'), found.lines)
+    }
+
+    fun testOtherDeclarationsOfTheNameAreItsNamesakes() {
+        open("b.ts", "class A {\n  run() {\n    return 1\n  }\n}\n\nclass B {\n  run() {\n    return 2\n  }\n}\n")
+
+        val found = located("run", path = "b.ts") as StopLocation.OnSymbol
+
+        assertEquals(TextPosition.at(2, 2), found.at)
+        assertEquals(listOf(DeclarationSite(TextPosition.at(8, 2), FileLine(10))), found.namesakes)
     }
 
     fun testLastSegmentFindsTheMember() {

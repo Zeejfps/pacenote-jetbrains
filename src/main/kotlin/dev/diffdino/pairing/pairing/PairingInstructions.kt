@@ -29,8 +29,9 @@ object PairingInstructions {
             "in it, a short title, the reason this is the next place, and your code for it. The code is " +
             "shown in the editor where it goes; the user accepts it or types it themselves. Exactly one " +
             "code block per stop: one function or one small edit, never several places at once. For a " +
-            "small change inside a large declaration, pass lines or after_line so the block covers only " +
-            "what changes. Then end your turn.\n" +
+            "small change inside a large declaration, pass replaces — the lines it changes, copied " +
+            "exactly — so the block covers only what changes. The user may have typed since you read a " +
+            "file, and doesn't always save: editor_read reads it as their editor has it. Then end your turn.\n" +
             "- Nothing waits on the user: each thing they do comes to you as your next message, starting " +
             "with \"" + MOVE_HEADING + "\" — they finished a stop (with their diff), said something, " +
             "skipped the stop, or ended the session. Until then, don't check on them or poll anything.\n" +
@@ -94,7 +95,8 @@ object PairingInstructions {
         "We are pairing in my JetBrains IDE through its DiffDino plugin, on the project at \"$projectPath\". You " +
             "navigate me through the change one stop at a time and propose " +
             "the code for each, and I accept it or write it myself. Use the DiffDino MCP tools (pairing_roadmap, pairing_stop, pairing_say, " +
-            "pairing_state, pairing_end, pairing_start, and editor_show / editor_spotlight to point at code).\n\n" +
+            "pairing_state, pairing_end, pairing_start, editor_show / editor_spotlight to point at code, and " +
+            "editor_read to read a file as my editor has it).\n\n" +
             "The goal:\n$goal\n\n" +
             protocol + "\n\n" +
             betweenSessions + "\n\n" +

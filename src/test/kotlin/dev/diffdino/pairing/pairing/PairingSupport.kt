@@ -82,10 +82,20 @@ class RecordingPairingPresentation : PairingPresentation {
         return answer(target)
     }
 
-    override fun showDraft(location: StopLocation, draft: StopDraft, actions: SuggestionActions) {
+    /** How many of the next draws find the file changed since the stop was found. */
+    var changedDraws = 0
+
+    override fun showDraft(location: StopLocation, draft: StopDraft, actions: SuggestionActions): Boolean {
+        if (changedDraws > 0) {
+            changedDraws--
+            calls.add("file changed")
+            return false
+        }
+
         this.actions = actions
         calls.add("show draft")
         drafts.add(draft)
+        return true
     }
 
     override suspend fun readText(location: StopLocation): String? = fileText

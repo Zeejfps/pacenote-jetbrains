@@ -4,6 +4,9 @@ import dev.diffdino.pairing.mcp.AgentTool
 import dev.diffdino.pairing.mcp.ToolInvocation
 import dev.diffdino.pairing.mcp.ToolJson
 import dev.diffdino.pairing.model.CodeSpotlights
+import dev.diffdino.pairing.model.LineSpan
+import dev.diffdino.pairing.model.ReadOutcome
+import dev.diffdino.pairing.model.ReadSpan
 import dev.diffdino.pairing.model.ShowOutcome
 import dev.diffdino.pairing.model.ShowTarget
 import dev.diffdino.pairing.model.SpotlightRun
@@ -19,14 +22,14 @@ import java.nio.file.Path
 
 /**
  * The tools that point the user at code in the project's editor (open a file on a declaration or a
- * line, light runs of lines up) whether or not a pairing session is running. They change the
- * screen, never the project, so none pauses for approval.
+ * line, light runs of lines up), and read a file as the editor has it, whether or not a pairing
+ * session is running. They change the screen at most, never the project, so none pauses for approval.
  */
 object EditorPresentationTools {
     /** [spotlights] answers the editor's side, or null where the IDE offers none. */
     fun createAll(root: Path, spotlights: () -> CodeSpotlights?, ui: CoroutineContext): List<AgentTool> {
         val access = EditorAccess(root, spotlights, ui)
-        return listOf(EditorShowTool(access), EditorSpotlightTool(access), EditorClearTool(access))
+        return listOf(EditorShowTool(access), EditorSpotlightTool(access), EditorClearTool(access), EditorReadTool(access))
     }
 }
 
@@ -183,6 +186,62 @@ internal class EditorSpotlightTool(private val access: EditorAccess) : AgentTool
         }
         if (last != null && last < first) return RunParse.Invalid("$where: 'to' ($last) is before 'from' ($first).")
         return RunParse.Ok(SpotlightRun.Lines(first, last, note))
+    }
+}
+
+/** Reads a file as the user's editor has it, numbered, unsaved edits included. */
+internal class EditorReadTool(private val access: EditorAccess) : AgentTool {
+    override val name = "editor_read"
+
+    override val description =
+        "Reads a file as the user's IDE has it, unsaved edits included, each line with its number: " +
+            "the text pairing_stop places code in, which can differ from the file on disk while the " +
+            "user types. Name a declaration in symbol to read just it, or pass from and to; with " +
+            "neither, the whole file, up to $MAX_LINES lines at a time. Changes nothing on screen. " +
+            "Read with it before a stop when the user may have typed in the file, and when a stop's " +
+            "replaces wasn't found. Line numbers and tabs are not part of the file's text."
+
+    override val jsonSchema =
+        """{"type":"object","properties":{"path":{"type":"string","description":"Repo-relative path of the file."},"symbol":{"type":"string","description":"A declaration to read, e.g. Client.Fetch."},"from":{"type":"integer","minimum":1,"description":"First line, 1-based, when no symbol is named."},"to":{"type":"integer","minimum":1,"description":"Last line, inclusive. Default: the end of the file."}},"required":["path"],"additionalProperties":false}"""
+
+    override val isWrite = false
+
+    override suspend fun invoke(args: JsonObject): ToolInvocation {
+        val given = ToolJson.string(args, "path")?.takeIf { it.isNotEmpty() } ?: return ToolInvocation.error("Argument 'path' is required.")
+        val path = access.relative(given) ?: return ToolInvocation.error("$given is outside the repository.")
+        val symbol = ToolJson.string(args, "symbol")?.trim()?.takeIf { it.isNotEmpty() }
+        val span = if (symbol != null) ReadSpan.Symbol(symbol) else {
+            val from = when (val line = EditorAccess.parseLine(args, "from")) {
+                LineArgument.Absent -> null
+                is LineArgument.Given -> line.line
+                is LineArgument.Invalid -> return ToolInvocation.error(line.message)
+            }
+            val to = when (val line = EditorAccess.parseLine(args, "to")) {
+                LineArgument.Absent -> null
+                is LineArgument.Given -> line.line
+                is LineArgument.Invalid -> return ToolInvocation.error(line.message)
+            }
+            if (from == null && to == null) ReadSpan.Whole else ReadSpan.Lines(from ?: 1, to)
+        }
+
+        return when (val outcome = access.withEditor { it.read(path, span) } ?: return ToolInvocation.error(access.noEditor)) {
+            is ReadOutcome.Missed -> ToolInvocation.error(outcome.message)
+            is ReadOutcome.Read -> ToolInvocation.ok(numbered(outcome))
+        }
+    }
+
+    // A header saying which lines these are of how many, then the lines; a long read stops at the cap and says where to go on.
+    private fun numbered(read: ReadOutcome.Read): String {
+        val total = read.lines.size
+        val last = minOf(read.span.to, read.span.from + MAX_LINES - 1)
+        val shown = LineSpan(read.span.from, last)
+        val rest = if (last < read.span.to) "\n(Lines ${last + 1}-${read.span.to} not shown: pass from: ${last + 1} to read on.)" else ""
+        return "${read.relativePath}, lines ${shown.from}-${shown.to} of $total, as the editor has it:\n" +
+            DraftPlacing.numbered(read.lines, shown) + rest
+    }
+
+    private companion object {
+        const val MAX_LINES = 2000
     }
 }
 

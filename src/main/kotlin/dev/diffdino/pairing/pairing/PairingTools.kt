@@ -7,6 +7,7 @@ import dev.diffdino.pairing.model.DraftPlace
 import dev.diffdino.pairing.model.DraftRequest
 import dev.diffdino.pairing.model.DraftSpan
 import dev.diffdino.pairing.model.EditorCaret
+import dev.diffdino.pairing.model.LineSpan
 import dev.diffdino.pairing.model.Milestone
 import dev.diffdino.pairing.model.PairingPhase
 import dev.diffdino.pairing.model.RoadmapChange
@@ -141,19 +142,23 @@ internal class PairingStopTool(private val target: PairingTarget) : AgentTool {
             "above it); for a declaration that doesn't exist yet it goes in after the one named in " +
             "after; for a file that doesn't exist yet the file is created empty and code is its first " +
             "block only: the imports and the outline of its type, with members added at later stops. " +
-            "For a small edit inside a " +
-            "large declaration, pass lines (the lines code replaces) or after_line (the line code goes " +
-            "in after) instead, as numbered in the file now. Lines at either end of code that read the " +
-            "same as the file are trimmed off, so the lines the reply names can be narrower than what " +
-            "you sent: that is expected, the stop is shown as it should be, and it needs no resending. " +
-            "Returns at once; then end your turn: the user's move comes to you as your next message. " +
-            "Send a stop again with replace: true only when the user asks for different code, or the " +
-            "reply shows it landed in a different declaration than you meant. Name the declaration, " +
-            "never a line number: \"Class.Method\" or \"Method\". Fails while another stop is open, " +
-            "unless replace is true."
+            "For a small edit inside a large declaration, pass replaces: the existing lines code " +
+            "replaces, copied exactly from the file — whole lines, indentation included — which must " +
+            "be in the declaration named in symbol, once. To add lines, quote the line they go after " +
+            "and keep it in code, unchanged, above the new ones. lines and after_line (numbered as in " +
+            "the file now) work too, but land wrong once the file has changed since you read it: " +
+            "prefer replaces. Lines at either end of code that read the same as the file are trimmed " +
+            "off, so the lines the reply names can be narrower than what you sent: that is expected, " +
+            "and needs no resending. The reply quotes the lines the code replaces or goes after: check " +
+            "they are the ones you meant. Returns at once; then end your turn: the user's move comes to " +
+            "you as your next message. Send a stop again with replace: true (which takes back the open " +
+            "stop; not to be confused with replaces) only when the user asks for different code, or " +
+            "the reply shows it landed somewhere you didn't mean. Name the declaration, never a line " +
+            "number: \"Class.Method\" or \"Method\". Fails while another stop is open, unless replace " +
+            "is true."
 
     override val jsonSchema =
-        """{"type":"object","properties":{"path":{"type":"string","description":"Repo-relative path of the file."},"symbol":{"type":"string","description":"The declaration to put the user on, e.g. Client.Fetch."},"after":{"type":"string","description":"For a declaration that doesn't exist yet: the declaration it goes after."},"title":{"type":"string","description":"One line: what to do here."},"reason":{"type":"string","description":"Markdown: why this is the next place, and what the change has to achieve. No code: the code goes in code."},"code":{"type":"string","description":"Your code for this stop: one block, exactly as it should read in the file, indented to fit."},"lines":{"type":"object","properties":{"from":{"type":"integer","minimum":1},"to":{"type":"integer","minimum":1}},"required":["from","to"],"additionalProperties":false,"description":"The lines code replaces, 1-based and inclusive, when not the whole declaration."},"after_line":{"type":"integer","minimum":1,"description":"The line code goes in after, when it replaces nothing."},"replace":{"type":"boolean","description":"Take back the open stop and open this one instead. Default false."}},"required":["path","symbol","title","reason","code"],"additionalProperties":false}"""
+        """{"type":"object","properties":{"path":{"type":"string","description":"Repo-relative path of the file."},"symbol":{"type":"string","description":"The declaration to put the user on, e.g. Client.Fetch."},"after":{"type":"string","description":"For a declaration that doesn't exist yet: the declaration it goes after."},"title":{"type":"string","description":"One line: what to do here."},"reason":{"type":"string","description":"Markdown: why this is the next place, and what the change has to achieve. No code: the code goes in code."},"code":{"type":"string","description":"Your code for this stop: one block, exactly as it should read in the file, indented to fit."},"lines":{"type":"object","properties":{"from":{"type":"integer","minimum":1},"to":{"type":"integer","minimum":1}},"required":["from","to"],"additionalProperties":false,"description":"The lines code replaces, 1-based and inclusive, when not the whole declaration. replaces is safer."},"after_line":{"type":"integer","minimum":1,"description":"The line code goes in after, when it replaces nothing."},"replaces":{"type":"string","description":"The existing lines code replaces, copied exactly from the file: whole lines, indentation included, found once in the declaration named in symbol. Instead of lines or after_line, and preferred to them."},"replace":{"type":"boolean","description":"Take back the open stop and open this one instead. Default false."}},"required":["path","symbol","title","reason","code"],"additionalProperties":false}"""
 
     override val isWrite = false
 
@@ -168,8 +173,10 @@ internal class PairingStopTool(private val target: PairingTarget) : AgentTool {
 
         val linesArg = args["lines"]
         val afterArg = args["after_line"]
-        if (linesArg != null && afterArg != null) return ToolInvocation.error("Pass lines or after_line, not both.")
+        val quotedArg = args["replaces"]
+        if (listOfNotNull(linesArg, afterArg, quotedArg).size > 1) return ToolInvocation.error("Pass one of replaces, lines and after_line.")
         val span = when {
+            quotedArg != null -> DraftSpan.Quoted(ToolJson.string(args, "replaces") ?: return ToolInvocation.error("replaces must be a string."))
             linesArg != null -> {
                 val lines = linesArg as? JsonObject
                 val from = ToolJson.int(lines?.get("from"))
@@ -215,14 +222,42 @@ internal class PairingStopTool(private val target: PairingTarget) : AgentTool {
             }
         }
 
+        val file = when (val location = open.location) {
+            is StopLocation.OnSymbol -> location.lines
+            is StopLocation.Insertion -> location.lines
+            is StopLocation.NewFile -> emptyList()
+        }
         when (val place = open.draft.place) {
-            is DraftPlace.Replace -> put("code_replaces", "lines ${place.lines.from}-${place.lines.to}")
-            is DraftPlace.InsertAfter -> put("code_goes", "after line ${place.line.value}")
+            is DraftPlace.Replace -> {
+                put("code_replaces", "lines ${place.lines.from}-${place.lines.to}")
+                if (file.isNotEmpty()) put("replaced_text", excerpt(file, place.lines))
+            }
+            is DraftPlace.InsertAfter -> {
+                val line = place.line.value
+                put("code_goes", if (line == 0) "at the top of the file" else "after line $line")
+                if (line >= 1) put("goes_after_text", DraftPlacing.numbered(file, LineSpan(line, line)))
+                if (line < file.size) put("goes_before_text", DraftPlacing.numbered(file, LineSpan(line + 1, line + 1)))
+            }
         }
 
         put("next",
-            "The stop is shown. Lines your code left as they were are trimmed, so the span above can be narrower than what " +
-                "you sent; don't send it again. End your turn: the user's move comes to you as your next message.")
+            "The stop is shown. Check the quoted lines are the ones you meant. Lines your code left as they were are " +
+                "trimmed, so the span can be narrower than what you sent; that needs no resending. If it landed " +
+                "somewhere you didn't mean, send it again with replace: true and replaces quoting the right lines. " +
+                "Otherwise end your turn: the user's move comes to you as your next message.")
+    }
+
+    // The lines as the file has them, numbered; a long run keeps its ends.
+    private fun excerpt(file: List<String>, span: LineSpan): String {
+        if (span.to - span.from + 1 <= MAX_ECHOED) return DraftPlacing.numbered(file, span)
+        val head = DraftPlacing.numbered(file, LineSpan(span.from, span.from + MAX_ECHOED / 2 - 1))
+        val tail = DraftPlacing.numbered(file, LineSpan(span.to - MAX_ECHOED / 2 + 1, span.to))
+        return "$head\n       … ${span.to - span.from + 1 - MAX_ECHOED} lines …\n$tail"
+    }
+
+    private companion object {
+        /** Replaced lines past this many are echoed by their ends. */
+        const val MAX_ECHOED = 20
     }
 }
 

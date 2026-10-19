@@ -5,6 +5,8 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import dev.diffdino.pairing.model.CodeSpotlights
 import dev.diffdino.pairing.model.LineSpan
+import dev.diffdino.pairing.model.ReadOutcome
+import dev.diffdino.pairing.model.ReadSpan
 import dev.diffdino.pairing.model.ShowOutcome
 import dev.diffdino.pairing.model.ShowTarget
 import dev.diffdino.pairing.model.SpotlightRun
@@ -21,6 +23,30 @@ internal class SpotlightTest : PairingEditorTestBase() {
 
     private fun bands() = highlighters().filter { it.layer < com.intellij.openapi.editor.markup.HighlighterLayer.SELECTION }
         .filter { it.targetArea == com.intellij.openapi.editor.markup.HighlighterTargetArea.LINES_IN_RANGE }
+
+    private fun read(span: ReadSpan) = await { spotlights.read("a.ts", span) }
+
+    fun testReadIsTheFileAsTheEditorHasIt_unsavedEditsIncluded() {
+        typeAtEndOfLine(1, "\n  // typed, not saved")
+
+        val read = read(ReadSpan.Whole) as ReadOutcome.Read
+
+        assertEquals("a.ts", read.relativePath)
+        assertEquals("  // typed, not saved", read.lines[1])
+        assertEquals(LineSpan(1, read.lines.size), read.span)
+    }
+
+    fun testReadADeclarationOrLines() {
+        assertEquals(LineSpan(2, 4), (read(ReadSpan.Symbol("Foo.bar")) as ReadOutcome.Read).span)
+        assertEquals(LineSpan(9, 11), (read(ReadSpan.Lines(9, 11)) as ReadOutcome.Read).span)
+        val toTheEnd = read(ReadSpan.Lines(15, 500)) as ReadOutcome.Read
+        assertEquals(LineSpan(15, toTheEnd.lines.size), toTheEnd.span)
+    }
+
+    fun testReadMissesAreDescribed() {
+        assertTrue((read(ReadSpan.Lines(500, null)) as ReadOutcome.Missed).message.contains("there is no line 500"))
+        assertTrue((read(ReadSpan.Symbol("nope")) as ReadOutcome.Missed).message.contains("'nope' is not declared"))
+    }
 
     fun testShowOpensAtASymbol() {
         editor.caretModel.moveToOffset(0)

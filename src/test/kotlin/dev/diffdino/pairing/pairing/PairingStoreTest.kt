@@ -68,9 +68,51 @@ class PairingStoreTest {
         val stop = open()
 
         assertEquals(1, stop.stop.number)
-        assertEquals(listOf("show src/Client.cs#Fetch", "reveal draft", "show draft"), presentation.calls)
+        assertEquals(listOf("show src/Client.cs#Fetch", "show draft", "reveal draft"), presentation.calls)
         assertSame(stop, store.stop.value)
         assertEquals(DraftPlace.Replace(LineSpan(10, 14)), presentation.drafts.single().place)
+    }
+
+    @Test
+    fun aFileTheUserChangedWhileTheStopWasPlaced_isReadAgain_andTheStopPlacedInIt() = ui.run {
+        presentation.changedDraws = 1
+
+        open()
+
+        assertEquals(
+            listOf("show src/Client.cs#Fetch", "file changed", "show src/Client.cs#Fetch", "show draft", "reveal draft"),
+            presentation.calls,
+        )
+        assertEquals(1, presentation.drafts.size)
+    }
+
+    @Test
+    fun aFileThatKeepsChanging_refusesTheStop_andLeavesTheOpenOneUp() = ui.run {
+        val first = open()
+        presentation.changedDraws = 10
+
+        val message = refusal(store.openStop(StopTarget("src/Client.cs", "Send", null), "Send", "Because.", draft, replace = true))
+
+        assertTrue(message, message.contains("kept changing"))
+        assertSame(first, store.stop.value)
+        assertEquals(1, presentation.drafts.size)
+    }
+
+    @Test
+    fun quotedLinesTheUserChangedMeanwhile_refuseTheStop_sayingSo() = ui.run {
+        val lines = RecordingPairingPresentation.FILE_LINES
+        var located = 0
+        presentation.answer = { target ->
+            val text = if (located++ == 0) lines else lines.map { if (it == "line 12") "line 12 edited" else it }
+            StopPlacement.Placed(StopLocation.OnSymbol("C:/repo/" + target.path, TextPosition.at(10, 4), "line 10", FileLine(14), text))
+        }
+        presentation.changedDraws = 1
+
+        val message = refusal(store.openStop(
+            StopTarget("src/Client.cs", "Fetch", null), "Retry", "Because.", DraftRequest("retry();", DraftSpan.Quoted("line 12")), false))
+
+        assertTrue(message, message.startsWith("The user changed the file"))
+        assertNull(store.stop.value)
     }
 
     @Test

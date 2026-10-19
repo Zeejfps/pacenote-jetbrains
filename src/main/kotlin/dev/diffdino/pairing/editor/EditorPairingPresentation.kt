@@ -8,6 +8,7 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadConstraint
 import com.intellij.openapi.application.constrainedReadAction
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ScrollType
@@ -85,16 +86,29 @@ class EditorPairingPresentation(private val project: Project) : PairingPresentat
         places.fileAt(location.absolutePath, refresh = false)?.let { FileDocumentManager.getInstance().getDocument(it)?.text }
     }
 
-    override fun showDraft(location: StopLocation, draft: StopDraft, actions: SuggestionActions) {
-        clearDraft()
+    override fun showDraft(location: StopLocation, draft: StopDraft, actions: SuggestionActions): Boolean {
         val file = places.fileAt(location.absolutePath, refresh = true)
         val document = file?.let { FileDocumentManager.getInstance().getDocument(it) }
         if (file == null || document == null) {
+            clearDraft()
             log.warn("No document to draw the draft in: ${location.absolutePath}")
-            return
+            return true
         }
 
+        if (!readsAsFound(document, location)) return false
+        clearDraft()
         shown = ShownDraft(project, file, document, location, draft, actions, scope) { needsState.value = it }
+        return true
+    }
+
+    // Whether the document is still the text the stop was found in, so the draft's lines are its lines.
+    private fun readsAsFound(document: Document, location: StopLocation): Boolean {
+        val lines = when (location) {
+            is StopLocation.OnSymbol -> location.lines
+            is StopLocation.Insertion -> location.lines
+            is StopLocation.NewFile -> return true
+        }
+        return document.text.split('\n').map { it.trimEnd('\r') } == lines
     }
 
     override fun clearDraft() {

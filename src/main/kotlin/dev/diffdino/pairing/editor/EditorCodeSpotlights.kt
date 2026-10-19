@@ -16,6 +16,8 @@ import com.intellij.psi.PsiManager
 import dev.diffdino.pairing.model.CodeSpotlights
 import dev.diffdino.pairing.model.FileLine
 import dev.diffdino.pairing.model.LineSpan
+import dev.diffdino.pairing.model.ReadOutcome
+import dev.diffdino.pairing.model.ReadSpan
 import dev.diffdino.pairing.model.ShowOutcome
 import dev.diffdino.pairing.model.ShowTarget
 import dev.diffdino.pairing.model.SpotlightRun
@@ -40,7 +42,7 @@ class EditorCodeSpotlights(private val project: Project) : CodeSpotlights, Dispo
     internal val litLines: List<LineSpan> get() = lit?.lines().orEmpty()
 
     override suspend fun show(path: String, target: ShowTarget): ShowOutcome {
-        val source = when (val read = read(path)) {
+        val source = when (val read = load(path)) {
             is Read.Failed -> return ShowOutcome.Missed(read.message)
             is Read.Found -> read
         }
@@ -63,8 +65,32 @@ class EditorCodeSpotlights(private val project: Project) : CodeSpotlights, Dispo
         return display(source, path, line, emptyList())
     }
 
+    override suspend fun read(path: String, span: ReadSpan): ReadOutcome {
+        val source = when (val read = load(path)) {
+            is Read.Failed -> return ReadOutcome.Missed(read.message)
+            is Read.Found -> read
+        }
+
+        val size = source.lines.size
+        val lines = when (span) {
+            ReadSpan.Whole -> LineSpan(1, size)
+            is ReadSpan.Symbol -> when (val found = declaration(source, path, span.name)) {
+                is Declaration.Found -> found.lines
+                is Declaration.Failed -> return ReadOutcome.Missed(found.message)
+            }
+            is ReadSpan.Lines -> when {
+                span.from < 1 -> return ReadOutcome.Missed("'from' must be 1 or more.")
+                span.from > size -> return ReadOutcome.Missed("$path has $size lines; there is no line ${span.from}.")
+                span.to != null && span.to < span.from -> return ReadOutcome.Missed("'to' (${span.to}) is before 'from' (${span.from}).")
+                else -> LineSpan(span.from, minOf(span.to ?: size, size))
+            }
+        }
+
+        return ReadOutcome.Read(places.relative(source.absolute) ?: path, source.lines, lines)
+    }
+
     override suspend fun spotlight(path: String, runs: List<SpotlightRun>): ShowOutcome {
-        val source = when (val read = read(path)) {
+        val source = when (val read = load(path)) {
             is Read.Failed -> return ShowOutcome.Missed(read.message)
             is Read.Found -> read
         }
@@ -109,7 +135,7 @@ class EditorCodeSpotlights(private val project: Project) : CodeSpotlights, Dispo
         data class Failed(val message: String) : Read
     }
 
-    private suspend fun read(path: String): Read = withContext(Dispatchers.Default) {
+    private suspend fun load(path: String): Read = withContext(Dispatchers.Default) {
         val absolute = places.absolute(path) ?: return@withContext Read.Failed("$path is outside the repository.")
         val unavailable = Read.Failed("$path is not a file in the repository, or is too large to open.")
         val file = places.fileAt(absolute, refresh = true) ?: return@withContext unavailable

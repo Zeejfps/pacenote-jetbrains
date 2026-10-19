@@ -9,8 +9,9 @@ interface PairingPresentation {
     suspend fun locate(target: StopTarget): StopPlacement
 
     /** Draws the agent's code for the stop into its file where it goes, with Accept, Accept & next
-     * and Next on it. */
-    fun showDraft(location: StopLocation, draft: StopDraft, actions: SuggestionActions)
+     * and Next on it, in place of the draft shown before. Draws nothing, and answers false, when the
+     * file no longer reads as it did when [location] was found in it. */
+    fun showDraft(location: StopLocation, draft: StopDraft, actions: SuggestionActions): Boolean
 
     /** The stop's file as the user has it now, unsaved edits included; null when it can't be read. */
     suspend fun readText(location: StopLocation): String?
@@ -80,10 +81,31 @@ sealed interface ShowOutcome {
     data class Missed(val message: String) : ShowOutcome
 }
 
+/** What of a file to read: all of it, a run of lines, or a declaration. */
+sealed interface ReadSpan {
+    data object Whole : ReadSpan
+
+    /** From [from] through [to], 1-based; [to] null means to the end. */
+    data class Lines(val from: Int, val to: Int?) : ReadSpan
+
+    data class Symbol(val name: String) : ReadSpan
+}
+
+/** How reading a file as the editor has it came out. */
+sealed interface ReadOutcome {
+    /** The file's [lines], of which [span] was asked for. */
+    data class Read(val relativePath: String, val lines: List<String>, val span: LineSpan) : ReadOutcome
+
+    data class Missed(val message: String) : ReadOutcome
+}
+
 /** Pointing at code in the editor without a pairing session: open a place, highlight runs with
- * notes, clear them. */
+ * notes, clear them; and reading a file as the editor has it. */
 interface CodeSpotlights {
     suspend fun show(path: String, target: ShowTarget): ShowOutcome
+
+    /** [span] of the file at [path] as the user has it, unsaved edits included. Changes nothing on screen. */
+    suspend fun read(path: String, span: ReadSpan): ReadOutcome
 
     suspend fun spotlight(path: String, runs: List<SpotlightRun>): ShowOutcome
 

@@ -28,6 +28,16 @@ internal class DraftTest : PairingEditorTestBase() {
         assertEquals(listOf("function added() {", "  return 2", "}"), shown.single().rows.map { it.text })
     }
 
+    fun testADraftIsNotDrawnIntoAFileThatChangedSinceTheStopWasFound() {
+        val location = located("added", after = "top")
+        typeAtEndOfLine(1, "\n// typed meanwhile")
+
+        assertFalse(presentation.showDraft(location, insertAfter(12, added), noActions))
+        assertEmpty(blocks())
+        assertTrue(presentation.showDraft(located("added", after = "top"), insertAfter(13, added), noActions))
+        assertEquals(1, blocks().size)
+    }
+
     fun testBlockHangsBetweenTheAnchorAndTheLineBelow() {
         showAddedAfterTop()
         val inlay = editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength).single()
