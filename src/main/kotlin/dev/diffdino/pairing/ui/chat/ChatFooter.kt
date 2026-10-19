@@ -1,10 +1,12 @@
 package dev.diffdino.pairing.ui.chat
 
+import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import dev.diffdino.pairing.pairing.AgentConversation
+import dev.diffdino.pairing.ui.action.SelectedCode
 import dev.diffdino.pairing.ui.support.CardCorner
 import dev.diffdino.pairing.ui.support.ChatColors
 import dev.diffdino.pairing.ui.support.DiffDinoBundle
@@ -28,9 +30,14 @@ import javax.swing.event.DocumentListener
 /**
  * Where the user talks to the agent: Enter sends, Shift+Enter breaks the line. It stays usable
  * while the agent works, since what is said then is queued behind the turn in flight, and goes dead
- * once the agent is gone.
+ * once the agent is gone. Code selected in the editor goes along with what is sent, named above it.
  */
-class ChatFooter(private val conversation: AgentConversation, lifetime: Lifetime, private val onSent: () -> Unit) : JPanel(BorderLayout()) {
+class ChatFooter(
+    private val conversation: AgentConversation,
+    project: Project,
+    lifetime: Lifetime,
+    private val onSent: () -> Unit,
+) : JPanel(BorderLayout()) {
     private val input = JBTextArea(1, 20).apply {
         font = JBFont.label()
         lineWrap = true
@@ -47,6 +54,7 @@ class ChatFooter(private val conversation: AgentConversation, lifetime: Lifetime
             return Dimension(size.width, content.coerceIn(input.getFontMetrics(input.font).height + JBUI.scale(MIN_PADDING), JBUI.scale(MAX_HEIGHT)))
         }
     }
+    private val selection = SelectionChip(project, conversation.root, SelectedCode(project, lifetime), lifetime)
     private val composer = RoundedCard(ChatColors.inputFill, ChatColors.border, CardCorner.Fixed(RADIUS), vertical = 2, horizontal = 8)
 
     init {
@@ -54,6 +62,7 @@ class ChatFooter(private val conversation: AgentConversation, lifetime: Lifetime
         scroll.border = JBUI.Borders.empty()
         scroll.isOpaque = false
         scroll.viewport.isOpaque = false
+        composer.add(selection, BorderLayout.NORTH)
         composer.add(scroll, BorderLayout.CENTER)
         add(composer, BorderLayout.CENTER)
         add(JPanel(BorderLayout()).apply {
@@ -77,16 +86,26 @@ class ChatFooter(private val conversation: AgentConversation, lifetime: Lifetime
             override fun removeUpdate(e: DocumentEvent) = changed()
             override fun changedUpdate(e: DocumentEvent) = changed()
         })
+        selection.onChanged = ::changed
         lifetime.bind(conversation.takesChat) { takes ->
             input.isEnabled = takes
-            input.emptyText.text = DiffDinoBundle.message(if (takes) "chat.placeholder" else "chat.gone")
             changed()
         }
     }
 
     private fun changed() {
-        send.isEnabled = conversation.takesChat.value && input.text.isNotBlank()
+        val takes = conversation.takesChat.value
+        input.emptyText.text = DiffDinoBundle.message(
+            when {
+                !takes -> "chat.gone"
+                selection.attached != null -> "chat.placeholder.selection"
+                else -> "chat.placeholder"
+            },
+        )
+        input.repaint()
+        send.isEnabled = takes && input.text.isNotBlank()
         scroll.revalidate()
+        composer.revalidate()
     }
 
     private fun bindKeys(area: JComponent) {
@@ -102,7 +121,8 @@ class ChatFooter(private val conversation: AgentConversation, lifetime: Lifetime
     private fun submit() {
         val text = input.text
         if (text.isBlank() || !conversation.takesChat.value) return
-        conversation.say(text)
+        conversation.say(text, selection.attached)
+        selection.dismiss()
         input.text = ""
         onSent()
     }

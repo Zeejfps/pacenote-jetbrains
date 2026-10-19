@@ -21,7 +21,7 @@ class ConversationPanel(conversation: AgentConversation, project: Project, priva
     init {
         val transcript = TranscriptView(conversation, project, lifetime)
         chat.add(transcript, BorderLayout.CENTER)
-        chat.add(ChatFooter(conversation, lifetime, onSent = transcript::pinToEnd), BorderLayout.SOUTH)
+        chat.add(ChatFooter(conversation, project, lifetime, onSent = transcript::pinToEnd), BorderLayout.SOUTH)
 
         add(AgentHeader(conversation, project, lifetime), BorderLayout.NORTH)
         add(body, BorderLayout.CENTER)
