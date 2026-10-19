@@ -12,9 +12,13 @@ import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.editor.ex.MarkupModelEx
+import com.intellij.openapi.editor.ex.RangeHighlighterEx
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
+import com.intellij.openapi.editor.impl.event.MarkupModelListener
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
+import com.intellij.openapi.editor.markup.MarkupModel
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
@@ -23,6 +27,7 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.ReadonlyStatusHandler
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
+import com.intellij.util.Alarm
 import com.intellij.util.concurrency.AppExecutorUtil
 import dev.diffdino.pairing.model.DraftPlace
 import dev.diffdino.pairing.model.FileLine
@@ -34,8 +39,8 @@ import org.jetbrains.concurrency.CancellablePromise
 /**
  * One draft drawn over its file: the agent's code as a block where it goes in every editor open on
  * the file, the lines it replaces tinted, the lines the user has already typed taken out of it, and
- * the names in it that nothing declares marked. Everything is anchored to the document, so it
- * follows edits. UI thread only.
+ * the names in it that nothing declares marked. It is coloured again as the file's highlighting
+ * comes in. Everything is anchored to the document, so it follows edits. UI thread only.
  */
 internal class ShownDraft(
     private val project: Project,
@@ -64,6 +69,7 @@ internal class ShownDraft(
     private var refreshQueued = false
     private var disposed = false
     private var namesJob: CancellablePromise<*>? = null
+    private val recolor = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
 
     init {
         Disposer.register(parent, this)
@@ -118,7 +124,9 @@ internal class ShownDraft(
                 override fun exitDumbMode() = checkNames()
             },
         )
+        recolorOnHighlights(DocumentMarkupModel.forDocument(document, project, true), this)
         EditorTracker(project, document, this) { editor, scope ->
+            recolorOnHighlights(editor.markupModel, scope)
             val block = DraftBlock(editor, { it.run(actions) }, scope)
             blocks[editor] = block
             Disposer.register(scope) { blocks.remove(editor) }
@@ -232,11 +240,31 @@ internal class ShownDraft(
         )
     }
 
+    // The file's highlighting comes and goes in bursts as it is worked out; the draft is coloured once a burst is over.
+    private fun recolorOnHighlights(model: MarkupModel, scope: Disposable) {
+        (model as? MarkupModelEx)?.addMarkupModelListener(
+            scope,
+            object : MarkupModelListener {
+                override fun afterAdded(highlighter: RangeHighlighterEx) = queueColor(highlighter)
+
+                override fun afterRemoved(highlighter: RangeHighlighterEx) = queueColor(highlighter)
+            },
+        )
+    }
+
+    private fun queueColor(highlighter: RangeHighlighter) {
+        if (disposed || highlighter === tint || highlighter.layer !in HighlighterLayer.SYNTAX..HighlighterLayer.ADDITIONAL_SYNTAX) return
+        recolor.cancelAllRequests()
+        recolor.addRequest(::color, RECOLOR_PAUSE_MILLIS)
+    }
+
     private fun color() {
-        if (lines.isEmpty()) return
-        ReadAction.nonBlocking<List<List<ColoredRun>>> { DraftColors.of(project, file, splice, lines) }
+        if (lines.isEmpty() || disposed) return
+        ReadAction.nonBlocking<List<List<ColoredRun>>> { DraftColors.of(project, file, splice, lines, FileNameColors.of(project, document)) }
+            .coalesceBy(this)
             .expireWith(this)
             .finishOnUiThread(ModalityState.any()) {
+                if (it == colors) return@finishOnUiThread
                 colors = it
                 refresh()
             }
@@ -271,5 +299,9 @@ internal class ShownDraft(
         is StopLocation.OnSymbol -> location.lines
         is StopLocation.Insertion -> location.lines
         is StopLocation.NewFile -> emptyList()
+    }
+
+    private companion object {
+        const val RECOLOR_PAUSE_MILLIS = 300
     }
 }
