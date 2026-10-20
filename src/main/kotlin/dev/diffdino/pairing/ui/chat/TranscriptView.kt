@@ -2,6 +2,7 @@ package dev.diffdino.pairing.ui.chat
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBUI
 import dev.diffdino.pairing.pairing.AgentConversation
 import dev.diffdino.pairing.pairing.PairingMessage
@@ -13,8 +14,8 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * The conversation with the agent: a row for each message, growing as they come, with a typing
- * indicator while the agent works. It follows the end of the conversation unless the user has
+ * The conversation with the agent: a row for each message, growing as they come, and under the
+ * last of them what the agent is doing while it works. It follows the end of the conversation unless the user has
  * scrolled up from it, and goes back to it when they say something.
  */
 class TranscriptView(
@@ -24,6 +25,10 @@ class TranscriptView(
 ) : JPanel(BorderLayout()) {
     private val rows = MessageRow(conversation, project)
     private val column = ScrollableColumn(GAP)
+
+    // The messages in a column of their own, so the activity row stays under the last of them: the
+    // layout places rows in the order they were added, whatever index they are added at.
+    private val messages = JPanel(VerticalLayout(JBUI.scale(GAP))).apply { isOpaque = false }
     private val scroll = ScrollableColumn.scrolling(column)
     private val follow = StickToBottom(scroll)
     private val shown = ArrayList<Pair<PairingMessage, Lifetime>>()
@@ -32,6 +37,7 @@ class TranscriptView(
     init {
         isOpaque = false
         column.border = JBUI.Borders.empty(12)
+        column.add(messages)
         column.add(activity)
         follow.follow(column)
         add(scroll, BorderLayout.CENTER)
@@ -56,14 +62,14 @@ class TranscriptView(
     private fun append(message: PairingMessage) {
         val rowLifetime = lifetime.child()
         val row: JComponent = rows.create(message, rowLifetime)
-        column.add(row, column.componentCount - 1)
+        messages.add(row)
         shown.add(message to rowLifetime)
     }
 
     private fun clear() {
         for ((_, rowLifetime) in shown) Disposer.dispose(rowLifetime)
         shown.clear()
-        while (column.componentCount > 1) column.remove(0)
+        messages.removeAll()
     }
 
     private companion object {

@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.nio.file.Path
 import com.intellij.ui.components.ActionLink
 import dev.diffdino.pairing.acp.AcpSessionUpdate
+import dev.diffdino.pairing.acp.AcpToolCallStatus
 import dev.diffdino.pairing.acp.AcpToolKind
 import dev.diffdino.pairing.ui.chat.ActivityRow
 import javax.swing.JButton
@@ -140,6 +141,41 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
         assertEquals(ToolApprovalOutcome.Approved, approval.pending.outcome.value)
         assertTrue(buttons(panel, "Allow").isEmpty())
         assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved" })
+    }
+
+    fun testATurnInFlight_showsTheActivityLineInThePanel() {
+        // The opening message is in the transcript before the panel is made.
+        val conversation = ui.run {
+            sessions.openChat(AgentPreset.ClaudeCode).also {
+                it.markRunning()
+                it.transcript.addFromUser("What does this do?")
+            }
+        }
+        val panel = ConversationPanel(conversation, project, Lifetime(testRootDisposable))
+        flush()
+        layout(panel, 460, 600)
+        val row = UIUtil.findComponentsOfType(panel, ActivityRow::class.java).single()
+        assertFalse(row.isVisible)
+
+        ui.run { conversation.beginTurn() }
+        Thread.sleep(150)
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(row.isVisible)
+        assertTrue("row ${row.bounds}", row.height > 0 && row.width > 0)
+        val asked = UIUtil.findComponentsOfType(panel, WrappingHtmlPane::class.java).single { it.isShowing || it.height > 0 }
+        val askedAt = SwingUtilities.convertPoint(asked.parent, asked.location, panel).y
+        val rowAt = SwingUtilities.convertPoint(row.parent, row.location, panel).y
+        assertTrue("the line at $rowAt, under the message at $askedAt", rowAt > askedAt)
+        assertTrue(UIUtil.findComponentsOfType(row, JBLabel::class.java).any { it.isVisible && it.text == "Working" })
+
+        ui.run { conversation.heard(AcpSessionUpdate.ToolCall("t", "npm test", AcpToolKind.Execute, AcpToolCallStatus.InProgress)) }
+        Thread.sleep(150)
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(UIUtil.findComponentsOfType(row, JBLabel::class.java).any { it.isVisible && it.text == "npm test" })
     }
 
     fun testAnMcpToolCall_canBeAllowedForItsWholeServer() {
