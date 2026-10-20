@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.pacenote"
-version = "0.1.8"
+version = "0.1.9"
 
 repositories {
     mavenCentral()
@@ -45,6 +45,21 @@ intellijPlatform {
         ideaVersion {
             sinceBuild = "262"
         }
+        changeNotes = """
+            <h3>0.1.9</h3>
+            <ul>
+              <li>Each agent preset can start its adapter with its own command, such as a different Node or a pinned adapter version.</li>
+              <li>Presets can set environment variables on top of the IDE's. <code>${'$'}NAME</code> refers to an existing variable, and the command is looked up on the PATH the preset sets.</li>
+              <li>Pacenote asks before running the shell commands you list (by default <code>git push</code>, <code>npm publish</code> and <code>rm -rf</code>), or before every command if you choose.</li>
+              <li>An MCP server you allow from an approval card stays allowed after a restart. You can remove it in Settings.</li>
+              <li>The settings page has a new layout: the preset list sits beside a single form, and each field has its label above and its hint below.</li>
+              <li>Restoring the built-in presets is now on the list's toolbar and asks before replacing presets you made.</li>
+              <li>Hints match the selected agent. Errors show on the field they belong to, and Apply takes you to the first one.</li>
+              <li>The page fits the width of the settings dialog.</li>
+              <li>The plugin no longer uses internal or deprecated IntelliJ Platform APIs.</li>
+              <li>Markdown is rendered with the IDE's own library instead of a bundled copy, which makes the download about a third smaller.</li>
+            </ul>
+        """.trimIndent()
     }
     buildSearchableOptions = false
     pluginVerification {
