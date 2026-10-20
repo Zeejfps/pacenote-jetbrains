@@ -1,7 +1,7 @@
 package dev.pacenote.ui.dialog
 
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import dev.pacenote.pairing.AgentChat
 import dev.pacenote.settings.AgentPreset
 import javax.swing.DefaultComboBoxModel
@@ -9,7 +9,7 @@ import javax.swing.DefaultComboBoxModel
 /** The agent presets to choose from, opening on the one the chat last used. */
 class AgentPicker(private val chat: AgentChat) : ComboBox<AgentPreset>() {
     init {
-        renderer = SimpleListCellRenderer.create("") { it.name }
+        renderer = textListCellRenderer { it.name }
         reload()
     }
 

@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.pacenote"
-version = "0.1.6"
+version = "0.1.7"
 
 repositories {
     mavenCentral()
@@ -18,6 +18,11 @@ repositories {
 
 kotlin {
     jvmToolchain(21)
+    // Implementing a platform interface otherwise compiles a bridge for each of its default methods,
+    // which the Plugin Verifier reports as overriding the deprecated ones.
+    compilerOptions {
+        jvmDefault = org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY
+    }
 }
 
 dependencies {

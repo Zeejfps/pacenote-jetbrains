@@ -11,25 +11,25 @@ import java.awt.Color
 
 /** The colours of the chat, derived from the IDE theme or its editor scheme. */
 object ChatColors {
-    val raised: Color = JBColor { ColorUtil.mix(UIUtil.getPanelBackground(), UIUtil.getLabelForeground(), 0.045) }
+    val raised: Color = JBColor.lazy { ColorUtil.mix(UIUtil.getPanelBackground(), UIUtil.getLabelForeground(), 0.045) }
 
-    val userFill: Color = JBColor {
+    val userFill: Color = JBColor.lazy {
         ColorUtil.mix(UIUtil.getPanelBackground(), JBUI.CurrentTheme.Focus.focusColor(), if (JBColor.isBright()) 0.16 else 0.34)
     }
 
-    val inputFill: Color = JBColor { UIUtil.getTextFieldBackground() }
+    val inputFill: Color = JBColor.lazy { UIUtil.getTextFieldBackground() }
 
-    val focusRing: Color = JBColor { JBUI.CurrentTheme.Focus.focusColor() }
+    val focusRing: Color = JBColor.lazy { JBUI.CurrentTheme.Focus.focusColor() }
 
-    val accentFill: Color = JBColor { JBUI.CurrentTheme.Button.defaultButtonColorStart() }
+    val accentFill: Color = JBColor.lazy { JBUI.CurrentTheme.Button.defaultButtonColorStart() }
 
-    val onAccent: Color = JBColor { JBUI.CurrentTheme.Button.defaultButtonForeground() }
+    val onAccent: Color = JBColor.lazy { JBUI.CurrentTheme.Button.defaultButtonForeground() }
 
     val border: Color = JBColor.border()
 
-    val secondaryText: Color = JBColor { UIUtil.getContextHelpForeground() }
+    val secondaryText: Color = JBColor.lazy { UIUtil.getContextHelpForeground() }
 
-    val accent: Color = JBColor { JBUI.CurrentTheme.Link.Foreground.ENABLED }
+    val accent: Color = JBColor.lazy { JBUI.CurrentTheme.Link.Foreground.ENABLED }
 
     val warningText: Color = JBColor(0x9A6700, 0xE3B341)
 
@@ -37,13 +37,13 @@ object ChatColors {
 
     val successText: Color = JBColor(0x2E7D32, 0x6CC070)
 
-    val refusedNoticeBackground: Color = JBColor { JBUI.CurrentTheme.Banner.WARNING_BACKGROUND }
+    val refusedNoticeBackground: Color = JBColor.lazy { JBUI.CurrentTheme.Banner.WARNING_BACKGROUND }
 
-    val errorNoticeBackground: Color = JBColor { JBUI.CurrentTheme.Banner.ERROR_BACKGROUND }
+    val errorNoticeBackground: Color = JBColor.lazy { JBUI.CurrentTheme.Banner.ERROR_BACKGROUND }
 
-    val addedLine: Color = JBColor { schemeBackground(DiffColors.DIFF_INSERTED, JBColor(0xDFF3E0, 0x294436)) }
+    val addedLine: Color = JBColor.lazy { schemeBackground(DiffColors.DIFF_INSERTED, JBColor(0xDFF3E0, 0x294436)) }
 
-    val removedLine: Color = JBColor { schemeBackground(DiffColors.DIFF_DELETED, JBColor(0xFADBD8, 0x4E2B2B)) }
+    val removedLine: Color = JBColor.lazy { schemeBackground(DiffColors.DIFF_DELETED, JBColor(0xFADBD8, 0x4E2B2B)) }
 
     private fun schemeBackground(key: TextAttributesKey, fallback: Color): Color =
         EditorColorsManager.getInstance().globalScheme.getAttributes(key)?.backgroundColor ?: fallback

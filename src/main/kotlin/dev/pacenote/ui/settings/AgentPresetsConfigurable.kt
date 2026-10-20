@@ -13,7 +13,6 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.CollectionListModel
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBList
@@ -25,6 +24,7 @@ import com.intellij.ui.dsl.builder.Cell
 import com.intellij.ui.dsl.builder.LabelPosition
 import com.intellij.ui.dsl.builder.TopGap
 import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.ui.layout.selected
 import com.intellij.util.ui.JBUI
 import dev.pacenote.acp.AcpEnvironment
@@ -164,18 +164,18 @@ class AgentPresetsConfigurable : Configurable {
     private fun wireFields() {
         list.selectionMode = ListSelectionModel.SINGLE_SELECTION
         list.visibleRowCount = PRESET_ROWS
-        list.cellRenderer = SimpleListCellRenderer.create("") { it.name.ifBlank { PacenoteBundle.message("settings.unnamed") } }
+        list.cellRenderer = textListCellRenderer { it.name.ifBlank { PacenoteBundle.message("settings.unnamed") } }
         list.addListSelectionListener { if (!it.valueIsAdjusting) showSelected() }
-        kind.renderer = SimpleListCellRenderer.create("") { it.label }
-        permission.renderer = SimpleListCellRenderer.create("") { permissionLabel(it) }
-        chatAgent.renderer = SimpleListCellRenderer.create("") { it?.name.orEmpty() }
+        kind.renderer = textListCellRenderer { it.label }
+        permission.renderer = textListCellRenderer { permissionLabel(it) }
+        chatAgent.renderer = textListCellRenderer { it?.name.orEmpty() }
         chatAgent.addActionListener { if (!loading) model.chooseChatAgent(chatAgent.item?.id) }
         for (field in listOf(name, arguments, command)) field.document.addDocumentListener(edited { commit() })
         environment.document.addDocumentListener(edited { commit() })
         kind.addActionListener { commit() }
         permission.addActionListener { commit() }
 
-        servers.cellRenderer = SimpleListCellRenderer.create("") { server ->
+        servers.cellRenderer = textListCellRenderer { server ->
             val read = McpToolName.serverName(server)
             if (read == server) server else "$read ($server)"
         }
