@@ -87,9 +87,18 @@ class EditAllowances(private val root: Path) {
     }
 }
 
-/** The "this file" answer to an edit: approves it, and every later edit to the same files while the
- * agent runs. */
-class FileAllowance(private val pending: PendingToolApproval, private val grant: () -> Unit) {
+/** What an [Allowance] lets through from then on. */
+sealed interface AllowanceScope {
+    /** Edits to the files the call would edit. */
+    data object SameFiles : AllowanceScope
+
+    /** Every tool of the MCP server the call is to, [server] as read. */
+    data class McpServer(val server: String) : AllowanceScope
+}
+
+/** The answer to a call that covers its like as well: approves it, and every later call within
+ * [scope] while the agent runs. */
+class Allowance(private val pending: PendingToolApproval, val scope: AllowanceScope, private val grant: () -> Unit) {
     private val _granted = MutableStateFlow(false)
 
     val granted: StateFlow<Boolean> = _granted.asStateFlow()

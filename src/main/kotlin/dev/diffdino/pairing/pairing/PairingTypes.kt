@@ -75,11 +75,11 @@ sealed interface PairingMessage {
     data class Notice(val text: String, val tone: NoticeTone) : PairingMessage
 
     /** A tool call the write guard left to the user, waiting on their answer: what an edit would
-     * change, and the answer that covers its files from then on, where it has any. */
+     * change, and the answer that covers its like from then on, where it has one. */
     class Approval(
         val pending: PendingToolApproval,
         val preview: List<EditPreviewLine>,
-        val allowance: FileAllowance?,
+        val allowance: Allowance?,
         /** The edits the call would make, whole, for a viewer that shows more than [preview] does. */
         val edits: List<AcpFileEdit> = emptyList(),
     ) : PairingMessage

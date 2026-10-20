@@ -5,6 +5,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
+import dev.diffdino.pairing.pairing.AllowanceScope
 import dev.diffdino.pairing.pairing.PairingMessage
 import dev.diffdino.pairing.pairing.ToolApprovalOutcome
 import dev.diffdino.pairing.ui.support.ChatButton
@@ -27,10 +28,10 @@ class ApprovalCard(
 ) : RoundedCard(ChatColors.raised, layout = VerticalLayout(JBUI.scale(8))) {
     init {
         add(JBLabel(DiffDinoBundle.message("approval.title", approval.pending.toolName)).apply { font = JBFont.label().asBold() })
-        add(
-            if (approval.preview.isNotEmpty()) EditDetails(approval.preview, approval.edits, project)
-            else EditDetails.commandLines(approval.pending.arguments),
-        )
+        when {
+            approval.preview.isNotEmpty() -> add(EditDetails(approval.preview, approval.edits, project))
+            approval.pending.arguments.isNotBlank() -> add(EditDetails.commandLines(approval.pending.arguments))
+        }
         add(ReactiveSlot(lifetime, approval.pending.outcome) { outcome, _ -> answers(outcome) })
     }
 
@@ -48,16 +49,25 @@ class ApprovalCard(
         return WrapPanel().apply {
             add(ChatButton(DiffDinoBundle.message("approval.allow"), primary = true).apply { addActionListener { pending.approve() } })
             approval.allowance?.let { allowance ->
-                add(ChatButton(DiffDinoBundle.message("approval.allow.file")).apply { addActionListener { allowance.allow() } })
+                val label = when (val scope = allowance.scope) {
+                    AllowanceScope.SameFiles -> DiffDinoBundle.message("approval.allow.file")
+                    is AllowanceScope.McpServer -> DiffDinoBundle.message("approval.allow.server", scope.server)
+                }
+                add(ChatButton(label).apply { addActionListener { allowance.allow() } })
             }
             add(ChatButton(DiffDinoBundle.message("approval.deny")).apply { addActionListener { pending.deny() } })
         }
     }
 
     private fun outcomeText(outcome: ToolApprovalOutcome): String = when (outcome) {
-        ToolApprovalOutcome.Approved ->
-            if (approval.allowance?.granted?.value == true) DiffDinoBundle.message("approval.approved.file")
-            else DiffDinoBundle.message("approval.approved")
+        ToolApprovalOutcome.Approved -> {
+            val allowance = approval.allowance?.takeIf { it.granted.value }
+            when (val scope = allowance?.scope) {
+                null -> DiffDinoBundle.message("approval.approved")
+                AllowanceScope.SameFiles -> DiffDinoBundle.message("approval.approved.file")
+                is AllowanceScope.McpServer -> DiffDinoBundle.message("approval.approved.server", scope.server)
+            }
+        }
         ToolApprovalOutcome.Denied -> DiffDinoBundle.message("approval.denied")
         ToolApprovalOutcome.Cancelled -> DiffDinoBundle.message("approval.withdrawn")
         ToolApprovalOutcome.Pending -> ""

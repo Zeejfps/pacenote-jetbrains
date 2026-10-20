@@ -74,17 +74,18 @@ class AgentTranscript {
 
     fun addNotice(text: String, tone: NoticeTone) = add(PairingMessage.Notice(text, tone))
 
-    /** Puts a tool call the write guard has no rule for in front of the user. [allowFiles], where
-     * given, is what answering "this file" grants on top of approving. */
+    /** Puts a tool call the write guard has no rule for in front of the user. [allow], where given,
+     * is what answering "all of these" covers, and [grant] what it grants on top of approving. */
     fun askPermission(
         title: String,
         details: String,
         preview: List<EditPreviewLine> = emptyList(),
-        allowFiles: (() -> Unit)? = null,
+        allow: AllowanceScope? = null,
+        grant: () -> Unit = {},
         edits: List<AcpFileEdit> = emptyList(),
     ): PendingToolApproval {
         val pending = PendingToolApproval(title, details)
-        add(PairingMessage.Approval(pending, preview, allowFiles?.let { FileAllowance(pending, it) }, edits))
+        add(PairingMessage.Approval(pending, preview, allow?.let { Allowance(pending, it, grant) }, edits))
         return pending
     }
 

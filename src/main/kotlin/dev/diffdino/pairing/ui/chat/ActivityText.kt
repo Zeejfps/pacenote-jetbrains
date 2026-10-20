@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.ui.chat
 
+import dev.diffdino.pairing.acp.McpToolName
 import dev.diffdino.pairing.pairing.AgentActivity
 import dev.diffdino.pairing.pairing.AgentDoing
 import dev.diffdino.pairing.pairing.AgentStepKind
@@ -51,9 +52,10 @@ object ActivityText {
         return ActivityLine(null, text, duration(now - from), null, quiet)
     }
 
-    /** A step's title on one line, without the backticks the agent marks code with; or what it does, without one. */
+    /** A step's title on one line, without the backticks the agent marks code with, an MCP tool by
+     * its server and name; or what it does, without one. */
     fun title(title: String, kind: AgentStepKind): String {
-        val plain = title.replace("`", "").replace(Regex("\\s+"), " ").trim()
+        val plain = McpToolName.readable(title.replace("`", "").replace(Regex("\\s+"), " ").trim())
         return plain.ifEmpty {
             DiffDinoBundle.message(
                 when (kind) {

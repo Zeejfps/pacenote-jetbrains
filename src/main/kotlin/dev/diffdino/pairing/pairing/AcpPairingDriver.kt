@@ -12,6 +12,7 @@ import dev.diffdino.pairing.acp.AcpMcpServer
 import dev.diffdino.pairing.acp.AcpPermissionOptionKind
 import dev.diffdino.pairing.acp.AcpPermissionPrompt
 import dev.diffdino.pairing.acp.AcpPermissionRequest
+import dev.diffdino.pairing.acp.McpToolName
 import dev.diffdino.pairing.acp.AcpPermissionVerdict
 import dev.diffdino.pairing.acp.AcpRpcException
 import dev.diffdino.pairing.acp.AcpSessionUpdate
@@ -79,6 +80,10 @@ class AcpPairingDriver private constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val inbox = Channel<AgentPrompt>(Channel.UNLIMITED)
     private val allowedEdits = EditAllowances(conversation.root)
+
+    // The MCP servers whose every tool the user allowed, by the name the agent gives, in lower case.
+    // On the conversation's thread.
+    private val allowedServers = HashSet<String>()
     private val refusedThisTurn = AtomicInteger()
     private val narratedThisTurn = AtomicInteger()
     private val withdrawn = ConcurrentHashMap.newKeySet<AcpPermissionRequest>()
@@ -245,7 +250,7 @@ class AcpPairingDriver private constructor(
         if (withdrawn.remove(request)) return
         if (verdict != AcpPermissionVerdict.Rejected) return
         refusedThisTurn.incrementAndGet()
-        val what = request.title.ifEmpty { request.kind.name }
+        val what = McpToolName.readable(request.title).ifEmpty { request.kind.name }
         post { conversation.transcript.addNotice("Refused ${describe(request.kind)}: $what", NoticeTone.Refused) }
     }
 
@@ -284,7 +289,7 @@ class AcpPairingDriver private constructor(
     }
 
     /** Puts the request in front of the user, or answers it here with none when it is an edit to
-     * files they already allowed. On the conversation's thread. */
+     * files they already allowed, or a call to an MCP server they did. On the conversation's thread. */
     private fun ask(request: AcpPermissionRequest, conversation: AgentConversation): PendingToolApproval? {
         val isEdit = request.kind == AcpToolKind.Edit && request.paths.isNotEmpty()
         if (isEdit && allowedEdits.cover(request.paths)) {
@@ -292,14 +297,32 @@ class AcpPairingDriver private constructor(
             conversation.transcript.add(PairingMessage.AllowedEdit(what, EditPreview.of(request.edits, conversation.root), request.edits))
             return null
         }
+        val server = request.mcpServer?.lowercase()
+        if (server != null && server in allowedServers) return null
 
-        return conversation.transcript.askPermission(
-            request.title,
-            request.command ?: request.kind.name,
-            EditPreview.of(request.edits, conversation.root),
-            if (isEdit) ({ allowedEdits.grant(request.paths) }) else null,
-            request.edits,
-        )
+        val tool = McpToolName.parse(request.title)
+        return when {
+            isEdit -> conversation.transcript.askPermission(
+                request.title,
+                request.command ?: request.kind.name,
+                EditPreview.of(request.edits, conversation.root),
+                AllowanceScope.SameFiles,
+                { allowedEdits.grant(request.paths) },
+                request.edits,
+            )
+            server != null -> conversation.transcript.askPermission(
+                tool?.toString() ?: request.title,
+                request.command ?: McpToolName.arguments(request.input),
+                allow = AllowanceScope.McpServer(tool?.server ?: McpToolName.serverName(request.mcpServer)),
+                grant = { allowedServers.add(server) },
+            )
+            else -> conversation.transcript.askPermission(
+                tool?.toString() ?: request.title,
+                request.command ?: request.kind.name,
+                EditPreview.of(request.edits, conversation.root),
+                edits = request.edits,
+            )
+        }
     }
 
     private fun optionFor(request: AcpPermissionRequest, approved: Boolean): String? {

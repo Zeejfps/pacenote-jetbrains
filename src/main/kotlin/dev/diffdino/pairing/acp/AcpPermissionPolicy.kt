@@ -21,7 +21,7 @@ enum class AcpToolKind { Read, Edit, Delete, Move, Search, Execute, Think, Fetch
  * that differently (Claude on the tool call, Codex on the earlier `tool_call` update, Gemini only
  * in its "Always Allow <server>" option), so the parse collects every marker into [mcpServer].
  * [command] is the command line of a shell call, where the adapter passes it in the tool call's
- * input. [edits] are the changes a file edit would make, and [paths] every file the call names.
+ * [input]. [edits] are the changes a file edit would make, and [paths] every file the call names.
  */
 data class AcpPermissionRequest(
     val toolCallId: String,
@@ -33,6 +33,8 @@ data class AcpPermissionRequest(
     val command: String? = null,
     val edits: List<AcpFileEdit> = emptyList(),
     val paths: List<String> = emptyList(),
+    /** The tool call's input, as the agent passed it. */
+    val input: JsonObject? = null,
 )
 
 /** One change an edit would make to a file: the text it replaces, none when it writes the whole
@@ -109,6 +111,7 @@ object AcpPermissionPolicy {
 
         val server = text(path(toolCall, "_meta", "claudeCode", "mcpServer", "name"))
             ?: claudeToolServer(text(toolCall["name"]))
+            ?: claudeToolServer(text(toolCall["title"]))
             ?: announcedServers[id]
             ?: geminiServer(root["options"])
         val isMcpApproval = (path(root, "_meta", "is_mcp_tool_approval") as? JsonPrimitive)?.booleanOrNull == true
@@ -128,6 +131,7 @@ object AcpPermissionPolicy {
             commandOf(toolCall["rawInput"]),
             edits,
             paths.distinct(),
+            toolCall["rawInput"] as? JsonObject,
         )
     }
 

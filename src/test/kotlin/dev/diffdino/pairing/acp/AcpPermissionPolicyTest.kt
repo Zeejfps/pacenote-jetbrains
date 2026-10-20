@@ -46,6 +46,17 @@ class AcpPermissionPolicyTest {
         """{"sessionId":"s","toolCall":{"toolCallId":"t1","name":"mcp__github__create_issue","title":"mcp__github__create_issue","kind":"other"},"options":$claudeOptions}"""))
 
     @Test
+    fun claudeMcpTool_namedOnlyByItsTitle_isKnownByItsServer() {
+        val request = AcpPermissionPolicy.parse(Json.parseToJsonElement(
+            """{"sessionId":"s","toolCall":{"toolCallId":"t1","title":"mcp__claude_ai_Claude_Docs__read","kind":"other","rawInput":{"id":"d1"}},"options":$claudeOptions}"""),
+            emptyMap())!!
+
+        assertEquals("claude_ai_Claude_Docs", request.mcpServer)
+        assertEquals("d1", McpToolName.arguments(request.input).removePrefix("id: "))
+        assertAsked(AcpPermissionPolicy.decide(request, own))
+    }
+
+    @Test
     fun codexMcpApproval_forTheAnnouncedOwnServer_isAllowed() = assertSelected(decide(
         """{"sessionId":"s","toolCall":{"toolCallId":"exec-1","kind":"execute","status":"pending"},"_meta":{"is_mcp_tool_approval":true},
            "options":[{"optionId":"allow_once","name":"Allow","kind":"allow_once"},{"optionId":"allow_session","name":"Allow for this session","kind":"allow_always"},

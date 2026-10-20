@@ -13,6 +13,7 @@ import dev.diffdino.pairing.model.Milestone
 import dev.diffdino.pairing.model.StopTarget
 import dev.diffdino.pairing.pairing.AgentConversation
 import dev.diffdino.pairing.pairing.AgentOpening
+import dev.diffdino.pairing.pairing.AllowanceScope
 import dev.diffdino.pairing.pairing.EditPreview
 import dev.diffdino.pairing.pairing.NoticeTone
 import dev.diffdino.pairing.pairing.PairingMessage
@@ -85,7 +86,7 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
         transcript.addNotice("Refused: not now", NoticeTone.Refused)
         transcript.addNotice("Something broke", NoticeTone.Error)
         val edits = listOf(AcpFileEdit("C:/repo/src/Client.kt", "call()", "retry { call() }"))
-        transcript.askPermission("Edit Client.kt", "Edit", EditPreview.of(edits, Path.of("C:/repo")), allowFiles = {}, edits = edits)
+        transcript.askPermission("Edit Client.kt", "Edit", EditPreview.of(edits, Path.of("C:/repo")), AllowanceScope.SameFiles, edits = edits)
         transcript.add(PairingMessage.AllowedEdit("Edit Util.kt", EditPreview.of(edits, Path.of("C:/repo")), edits))
         val session = conversation.beginSession("Add a retry")
         session.store.setRoadmap(listOf(Milestone("Wrap the call", true), Milestone("Add a test", false)))
@@ -139,6 +140,27 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
         assertEquals(ToolApprovalOutcome.Approved, approval.pending.outcome.value)
         assertTrue(buttons(panel, "Allow").isEmpty())
         assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved" })
+    }
+
+    fun testAnMcpToolCall_canBeAllowedForItsWholeServer() {
+        var granted = false
+        val conversation = ui.run {
+            sessions.openChat(AgentPreset.ClaudeCode).apply {
+                markRunning()
+                transcript.askPermission("Claude Docs: read", "id: d1", allow = AllowanceScope.McpServer("Claude Docs"), grant = { granted = true })
+            }
+        }
+        val panel = ConversationPanel(conversation, project, Lifetime(testRootDisposable))
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Allow Claude Docs: read?" })
+        buttons(panel, "Allow all Claude Docs tools").single().doClick()
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(granted)
+        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved, and every Claude Docs tool from now on" })
     }
 
     fun testHtmlTextIsTallerWhenTheWidthIsNarrower() {
