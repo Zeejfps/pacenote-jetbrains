@@ -32,11 +32,11 @@ dependencies {
         bundledPlugin("Git4Idea")
         bundledModule("intellij.platform.vcs.dvcs")
         bundledModule("intellij.platform.vcs.dvcs.impl")
+        bundledModule("intellij.libraries.markdown")
         bundledPlugin("JavaScript")
         testFramework(TestFrameworkType.Platform)
         pluginVerifier()
     }
-    implementation("org.jetbrains:markdown:0.7.3")
     testImplementation("junit:junit:4.13.2")
 }
 

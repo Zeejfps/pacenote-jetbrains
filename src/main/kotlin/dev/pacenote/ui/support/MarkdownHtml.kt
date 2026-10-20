@@ -8,6 +8,7 @@ import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.GeneratingProvider
 import org.intellij.markdown.html.HtmlGenerator
+import org.intellij.markdown.parser.CancellationToken
 import org.intellij.markdown.parser.LinkMap
 import org.intellij.markdown.parser.MarkdownParser
 import java.net.URI
@@ -20,7 +21,8 @@ object MarkdownHtml {
     private val flavour = SafeFlavour()
 
     fun render(markdown: String): String {
-        val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
+        val text: CharSequence = markdown
+        val tree = MarkdownParser(flavour, true, CancellationToken.NonCancellable).buildMarkdownTreeFromString(text)
         return HtmlGenerator(markdown, tree, flavour).generateHtml()
     }
 
