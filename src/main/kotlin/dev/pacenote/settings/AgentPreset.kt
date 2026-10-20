@@ -37,13 +37,16 @@ enum class AgentPermission {
 }
 
 /** A named way to run an agent: which CLI, what it may do without asking, and the extra arguments
- * it is given. */
+ * it is given. [command] starts the agent's adapter in place of the built-in command, none for that;
+ * [environment] is set on its process over the IDE's own, a value naming others as `$NAME`. */
 data class AgentPreset(
     val id: AgentPresetId,
     val name: String,
     val kind: AgentKind,
     val permission: AgentPermission,
     val arguments: List<String>,
+    val command: List<String> = emptyList(),
+    val environment: Map<String, String> = emptyMap(),
 ) {
     companion object {
         val ClaudeCode = AgentPreset(AgentPresetId("claude"), "Claude Code", AgentKind.ClaudeCode, AgentPermission.Ask, emptyList())

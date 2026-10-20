@@ -191,12 +191,12 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
         layout(panel, 460, 600)
 
         assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Allow Claude Docs: read?" })
-        buttons(panel, "Allow all Claude Docs tools").single().doClick()
+        buttons(panel, "Always allow Claude Docs tools").single().doClick()
         flush()
         layout(panel, 460, 600)
 
         assertTrue(granted)
-        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved, and every Claude Docs tool from now on" })
+        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved, and every Claude Docs tool from now on (Settings | Tools | Pacenote)" })
     }
 
     fun testHtmlTextIsTallerWhenTheWidthIsNarrower() {

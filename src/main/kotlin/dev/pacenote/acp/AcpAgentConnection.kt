@@ -3,6 +3,7 @@ package dev.pacenote.acp
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import dev.pacenote.acp.AcpJsonRpc.Companion.text
+import dev.pacenote.settings.ApprovalRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
@@ -61,7 +62,8 @@ sealed interface AcpStart {
 /**
  * One agent run over the Agent Client Protocol: the adapter process, its one session, and the write
  * guard. Every permission request goes through [AcpPermissionPolicy] (reads, shell commands and the
- * plugin's own MCP tools pass, file edits and the rest are asked) and the session is put in its
+ * plugin's own MCP tools pass unless the user's rules say otherwise, file edits and the rest are
+ * asked) and the session is put in its
  * harness's asking mode first, so that no write is decided inside the CLI.
  */
 class AcpAgentConnection private constructor(
@@ -71,6 +73,7 @@ class AcpAgentConnection private constructor(
     private val prompt: AcpPermissionPrompt,
     private val events: AcpConnectionEvents,
     private val ownServer: String,
+    private val rules: () -> ApprovalRules,
 ) : AcpClientMessages {
     private val rpc = AcpJsonRpc(incoming, outgoing, this, events::traffic)
     private val announcedServers = HashMap<String, String>()
@@ -238,7 +241,7 @@ class AcpAgentConnection private constructor(
         val request = synchronized(announcedServers) { AcpPermissionPolicy.parse(parameters, announcedServers.toMap()) }
             ?: throw AcpRpcException(AcpRpcException.INVALID_PARAMS, "Unreadable permission request.")
 
-        val chosen = when (val decision = AcpPermissionPolicy.decide(request, ownServer)) {
+        val chosen = when (val decision = AcpPermissionPolicy.decide(request, ownServer, rules())) {
             is AcpPermissionDecision.Select -> {
                 events.permissionDecided(request, decision.verdict)
                 decision.optionId
@@ -287,7 +290,8 @@ class AcpAgentConnection private constructor(
         private const val STDERR_LINES = 40
         private val HANDSHAKE_TIMEOUT = 90.seconds
 
-        /** Starts [harness]'s adapter in [workingDirectory] and opens its session with [server].
+        /** Starts [harness]'s adapter in [workingDirectory] and opens its session with [server]. The
+         * guard reads [rules] at each permission request, so a change to them takes effect at once.
          * Blocks on process creation, so call it off the EDT. */
         suspend fun start(
             harness: AcpHarness,
@@ -296,8 +300,11 @@ class AcpAgentConnection private constructor(
             prompt: AcpPermissionPrompt,
             events: AcpConnectionEvents,
             environment: AcpEnvironment,
+            rules: () -> ApprovalRules = { ApprovalRules.Default },
         ): AcpStart {
-            val executable = environment.resolveCommand(harness.command)
+            // The command is looked up on the PATH the process gets, so a preset can set that too.
+            val launched = environment.with(harness.environment)
+            val executable = launched.resolveCommand(harness.command)
                 ?: return AcpStart.Failed("'${harness.command}' was not found on PATH.")
 
             val process = try {
@@ -305,7 +312,7 @@ class AcpAgentConnection private constructor(
                     .withParameters(harness.args)
                     .withWorkingDirectory(workingDirectory)
                     .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.NONE)
-                    .withEnvironment(environment.variables + harness.environment)
+                    .withEnvironment(launched.variables)
                     .withCharset(StandardCharsets.UTF_8)
                     .createProcess()
             } catch (e: ExecutionException) {
@@ -319,6 +326,7 @@ class AcpAgentConnection private constructor(
                 prompt,
                 events,
                 server.name,
+                rules,
             )
             thread(isDaemon = true, name = "Pacenote ACP stderr") {
                 try {
@@ -354,7 +362,8 @@ class AcpAgentConnection private constructor(
             prompt: AcpPermissionPrompt,
             events: AcpConnectionEvents,
             ownServer: String,
-        ): AcpAgentConnection = AcpAgentConnection(incoming, outgoing, null, prompt, events, ownServer)
+            rules: () -> ApprovalRules = { ApprovalRules.Default },
+        ): AcpAgentConnection = AcpAgentConnection(incoming, outgoing, null, prompt, events, ownServer, rules)
 
         private fun at(root: JsonElement?, vararg keys: String): JsonElement? {
             var node = root

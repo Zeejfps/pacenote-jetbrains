@@ -1,6 +1,8 @@
 package dev.pacenote.acp
 
+import dev.pacenote.settings.ApprovalRules
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -143,6 +145,52 @@ class AcpPermissionPolicyTest {
             "legit push" to false,
         )
         for ((command, pushes) in cases) assertEquals(command, pushes, AcpPermissionPolicy.pushes(command))
+    }
+
+    private fun shell(command: String): AcpPermissionRequest = AcpPermissionPolicy.parse(Json.parseToJsonElement(
+        """{"sessionId":"s","toolCall":{"toolCallId":"t1","title":"x","kind":"execute","rawInput":{"command":${JsonPrimitive(command)}}},"options":$claudeOptions}"""),
+        emptyMap())!!
+
+    @Test
+    fun theDefaultRules_askBeforeAPublishOrAForcedRemove() {
+        assertAsked(AcpPermissionPolicy.decide(shell("npm run build && npm publish --access public"), own))
+        assertAsked(AcpPermissionPolicy.decide(shell("rm -rf build"), own))
+        assertSelected(AcpPermissionPolicy.decide(shell("rm build/out.txt"), own), "allow-once", AcpPermissionVerdict.Allowed)
+    }
+
+    @Test
+    fun theUsersList_replacesTheDefaults() {
+        val rules = ApprovalRules(askBefore = listOf("docker compose down"))
+
+        assertAsked(AcpPermissionPolicy.decide(shell("cd infra; DOCKER COMPOSE down -v"), own, rules))
+        assertSelected(AcpPermissionPolicy.decide(shell("git push"), own, rules), "allow-once", AcpPermissionVerdict.Allowed)
+    }
+
+    @Test
+    fun askingAboutEveryCommand_asksAboutTheTestsToo() =
+        assertAsked(AcpPermissionPolicy.decide(shell("./gradlew test"), own, ApprovalRules(askEveryCommand = true)))
+
+    @Test
+    fun aServerTheUserAllows_hasEveryToolLetThrough_whateverItsKind() = assertSelected(AcpPermissionPolicy.decide(
+        AcpPermissionPolicy.parse(Json.parseToJsonElement(
+            """{"sessionId":"s","toolCall":{"toolCallId":"t1","name":"mcp__linear__save_issue","title":"mcp__linear__save_issue","kind":"edit"},"options":$claudeOptions}"""),
+            emptyMap())!!,
+        own, ApprovalRules(allowedServers = listOf("Linear"))),
+        "allow-once", AcpPermissionVerdict.Allowed)
+
+    @Test
+    fun runs_findsAPatternsWordsAsAProgramRunsThem() {
+        val cases = listOf(
+            Triple("rm -rf build", "rm -rf", true),
+            Triple("/bin/rm -rf build", "rm -rf", true),
+            Triple("rm -rfv build", "rm -rf", false),
+            Triple("rm -r -f build", "rm -rf", false),
+            Triple("echo 'farm -rf'", "rm -rf", false),
+            Triple("npm.cmd publish", "npm publish", true),
+            Triple("pnpm publish", "npm publish", false),
+            Triple("anything", "   ", false),
+        )
+        for ((command, pattern, runs) in cases) assertEquals("$pattern in $command", runs, AcpPermissionPolicy.runs(command, pattern))
     }
 
     private fun parse(toolCall: String): AcpPermissionRequest =

@@ -81,6 +81,35 @@ class PresetsEditorModelTest {
     }
 
     @Test
+    fun aCommandAndEnvironment_areParsedOnSave_andReadBackAsTyped() {
+        val model = model()
+        model.update(model.drafts.first().copy(
+            command = "\"C:/Program Files/nodejs/npx.cmd\" -y @agentclientprotocol/claude-agent-acp@1.2.0",
+            environment = "# for the proxy\nHTTPS_PROXY = http://proxy:8080\n\nPATH=C:/node;%PATH%",
+        ))
+
+        val saved = (model.check() as PresetsCheck.Valid).presets.first()
+        assertEquals(listOf("C:/Program Files/nodejs/npx.cmd", "-y", "@agentclientprotocol/claude-agent-acp@1.2.0"), saved.command)
+        assertEquals(mapOf("HTTPS_PROXY" to "http://proxy:8080", "PATH" to "C:/node;%PATH%"), saved.environment)
+        val again = PresetDraft.of(saved)
+        assertEquals("\"C:/Program Files/nodejs/npx.cmd\" -y @agentclientprotocol/claude-agent-acp@1.2.0", again.command)
+        assertEquals("HTTPS_PROXY=http://proxy:8080\nPATH=C:/node;%PATH%", again.environment)
+    }
+
+    @Test
+    fun reportsACommandOrEnvironmentThatCantBeRead() {
+        val model = model()
+        val claude = model.drafts[0]
+        val codex = model.drafts[1]
+        model.update(claude.copy(command = "\"npx -y"))
+        model.update(codex.copy(environment = "OK=1\n1BAD=2"))
+
+        val problems = (model.check() as PresetsCheck.Invalid).problems
+        assertEquals(PresetProblem.CommandQuote, problems[claude.id])
+        assertEquals(PresetProblem.Environment("1BAD=2"), problems[codex.id])
+    }
+
+    @Test
     fun resetGoesBackToTheBuiltInPresets() {
         val model = model()
         model.add("Mine")

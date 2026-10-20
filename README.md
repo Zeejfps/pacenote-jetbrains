@@ -18,12 +18,12 @@ talks to them over the [Agent Client Protocol](https://agentclientprotocol.com).
 - **Agent chat.** Ask about your code in the Pacenote tool window. Select code in the editor and it
   goes along with your next message.
 - **Approvals.** Edits and other actions the agent wants to take come to you as cards showing what
-  would change. You can allow one edit, every edit to the same file, or every tool of an MCP server,
-  for as long as the agent runs.
+  would change. You can allow one edit, every edit to the same file while the agent runs, or every
+  tool of an MCP server from then on. You choose which shell commands are asked about.
 - **Live activity.** While the agent works you see what it is doing (the command it runs, the file
   it reads) and for how long, with a Stop button to end its turn.
-- **Agent presets.** Name the ways you run your agents, with their own permissions and extra
-  arguments, under **Settings → Tools → Pacenote**.
+- **Agent presets.** Name the ways you run your agents, with their own permissions, extra
+  arguments, command and environment variables, under **Settings → Tools → Pacenote**.
 
 ## Requirements
 
@@ -38,6 +38,10 @@ talks to them over the [Agent Client Protocol](https://agentclientprotocol.com).
   | Claude Code | `npx -y @agentclientprotocol/claude-agent-acp` | Node.js, and Claude Code signed in |
   | Codex | `npx -y @agentclientprotocol/codex-acp` | Node.js, and Codex signed in |
   | Gemini CLI | `gemini --experimental-acp` | The `gemini` CLI on your PATH, signed in |
+
+If Pacenote can't find `npx` or `gemini`, which can happen when the IDE is started from the macOS
+Dock rather than a shell, set the preset's **Command** to the full path, or add the right `PATH` to
+its **Environment** (`PATH=/opt/homebrew/bin:$PATH`).
 
 ## Getting started
 
@@ -67,8 +71,10 @@ Pacenote has no servers of its own and collects nothing.
 - To let the agent show you code and drafts, Pacenote runs a small MCP server for it on
   `127.0.0.1`, reachable only from your machine and only through a per-session secret URL.
 - By default the agent may read, search and run commands such as your tests without asking. File
-  edits, deletes, a `git push` and tools from other MCP servers are put to you first. A preset can
-  loosen this for chat, but a pairing session always asks.
+  edits, deletes, tools from other MCP servers, and commands that run `git push`, `npm publish` or
+  `rm -rf` are put to you first. You can change the commands, or be asked about every one, under
+  **Settings → Tools → Pacenote → Approvals**. A preset can loosen this for chat, but a pairing
+  session always asks.
 
 ## Building from source
 

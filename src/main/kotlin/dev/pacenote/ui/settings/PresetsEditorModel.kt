@@ -7,18 +7,25 @@ import dev.pacenote.settings.AgentKind
 import dev.pacenote.settings.AgentPermission
 import dev.pacenote.settings.AgentPreset
 import dev.pacenote.settings.AgentPresetId
+import dev.pacenote.settings.AgentVariables
+import dev.pacenote.settings.AgentVariablesParse
 
-/** A preset as the settings page edits it, its arguments as typed, which may not parse yet. */
+/** A preset as the settings page edits it, its arguments, command and environment as typed, which
+ * may not parse yet. An empty [command] runs the built-in one. */
 data class PresetDraft(
     val id: AgentPresetId,
     val name: String,
     val kind: AgentKind,
     val permission: AgentPermission,
     val arguments: String,
+    val command: String = "",
+    val environment: String = "",
 ) {
     companion object {
-        fun of(preset: AgentPreset) =
-            PresetDraft(preset.id, preset.name, preset.kind, preset.permission, AgentArguments.format(preset.arguments))
+        fun of(preset: AgentPreset) = PresetDraft(
+            preset.id, preset.name, preset.kind, preset.permission, AgentArguments.format(preset.arguments),
+            AgentArguments.format(preset.command), AgentVariables.format(preset.environment),
+        )
     }
 }
 
@@ -27,6 +34,12 @@ sealed interface PresetProblem {
     data object NameRequired : PresetProblem
 
     data class Arguments(val problem: AgentArgumentsProblem) : PresetProblem
+
+    /** The command leaves a quote open. */
+    data object CommandQuote : PresetProblem
+
+    /** [line] of the environment is not NAME=value. */
+    data class Environment(val line: String) : PresetProblem
 }
 
 /** How checking the drafts came out. */
@@ -84,10 +97,25 @@ class PresetsEditorModel(saved: List<AgentPreset>, chatAgent: AgentPresetId?) {
                 problems[draft.id] = PresetProblem.NameRequired
                 continue
             }
-            when (val parsed = AgentArguments.parse(draft.arguments, draft.kind)) {
-                is AgentArgumentsParse.Ok -> presets.add(AgentPreset(draft.id, name, draft.kind, draft.permission, parsed.arguments))
-                is AgentArgumentsParse.Invalid -> problems[draft.id] = PresetProblem.Arguments(parsed.problem)
+            val arguments = when (val parsed = AgentArguments.parse(draft.arguments, draft.kind)) {
+                is AgentArgumentsParse.Ok -> parsed.arguments
+                is AgentArgumentsParse.Invalid -> {
+                    problems[draft.id] = PresetProblem.Arguments(parsed.problem)
+                    continue
+                }
             }
+            val command = AgentArguments.split(draft.command) ?: run {
+                problems[draft.id] = PresetProblem.CommandQuote
+                continue
+            }
+            val environment = when (val parsed = AgentVariables.parse(draft.environment)) {
+                is AgentVariablesParse.Ok -> parsed.variables
+                is AgentVariablesParse.Invalid -> {
+                    problems[draft.id] = PresetProblem.Environment(parsed.line)
+                    continue
+                }
+            }
+            presets.add(AgentPreset(draft.id, name, draft.kind, draft.permission, arguments, command, environment))
         }
         return if (problems.isEmpty()) PresetsCheck.Valid(presets) else PresetsCheck.Invalid(problems)
     }

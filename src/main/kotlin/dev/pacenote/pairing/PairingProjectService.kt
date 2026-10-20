@@ -37,6 +37,7 @@ class PairingProjectService(private val project: Project, scope: CoroutineScope)
         workspace = GitPairingWorkspace(root, WorkingTreeSnapshots()),
         endpoints = ::ensureEndpoint,
         environment = { AcpEnvironment(EnvironmentUtil.getEnvironmentMap()) },
+        approvals = AgentSettings.getInstance(),
         scope = uiScope,
         ui = ui,
     ))

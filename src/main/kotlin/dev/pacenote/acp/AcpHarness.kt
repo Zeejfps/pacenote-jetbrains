@@ -51,11 +51,17 @@ data class AcpHarness(
         val Gemini = AcpHarness(
             AcpHarnessId("gemini"), "Gemini CLI", "gemini", listOf("--experimental-acp"), "default")
 
+        /** The command line that starts a [kind] agent's adapter unless its preset names another. */
+        fun builtInCommand(kind: AgentKind): List<String> = of(kind).let { listOf(it.command) + it.args }
+
         /** The harness that runs [preset]. Claude Code's adapter takes no CLI arguments of its own,
          * so its flags travel in the session's `_meta`, which the adapter hands to the CLI; the
-         * other adapters take them on their command line. */
+         * other adapters take them on their command line, after the preset's own command if it
+         * has one. The preset's environment goes on the process either way. */
         fun forPreset(preset: AgentPreset): AcpLaunch {
-            val agent = of(preset.kind)
+            val builtIn = of(preset.kind)
+            val agent = if (preset.command.isEmpty()) builtIn
+            else builtIn.copy(command = preset.command.first(), args = preset.command.drop(1))
             val chatMode = modeOf(preset.kind, preset.permission)
             val id = AcpHarnessId(preset.id.value)
             return when (preset.kind) {
@@ -66,11 +72,12 @@ data class AcpHarness(
                         label = preset.name,
                         chatMode = chatMode,
                         sessionMeta = claudeMeta(flags.flags),
-                        environment = claudeEnvironment(flags.flags),
+                        environment = preset.environment + claudeEnvironment(flags.flags),
                     ))
                 }
                 AgentKind.Codex, AgentKind.Gemini -> AcpLaunch.Ready(agent.copy(
                     id = id, label = preset.name, chatMode = chatMode, args = agent.args + preset.arguments,
+                    environment = preset.environment,
                 ))
             }
         }

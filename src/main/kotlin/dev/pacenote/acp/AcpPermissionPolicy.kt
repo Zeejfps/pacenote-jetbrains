@@ -1,6 +1,7 @@
 package dev.pacenote.acp
 
 import dev.pacenote.acp.AcpJsonRpc.Companion.text
+import dev.pacenote.settings.ApprovalRules
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -53,23 +54,26 @@ enum class AcpPermissionVerdict { Allowed, Rejected }
 
 /**
  * The write guard for an agent run over ACP: reads and shell commands are allowed (the agent runs
- * the tests, formatters and generators itself) except a push, which is put to the user; file edits
- * are put to the user too, and the plugin's own MCP tools are allowed each time they are asked
- * about. The same rules for every harness, which is why the guard lives in the client rather than
- * in each CLI's flags.
+ * the tests, formatters and generators itself) except the ones the user's [ApprovalRules] ask about,
+ * a push among them by default, which are put to the user; file edits are put to the user too, and
+ * the tools of the plugin's own MCP server, and of servers the user allowed, are allowed each time
+ * they are asked about. The same rules for every harness, which is why the guard lives in the
+ * client rather than in each CLI's flags.
  */
 object AcpPermissionPolicy {
-    fun decide(request: AcpPermissionRequest, ownServer: String): AcpPermissionDecision {
+    fun decide(request: AcpPermissionRequest, ownServer: String, rules: ApprovalRules = ApprovalRules.Default): AcpPermissionDecision {
         // Once, every time, rather than always: Claude Code writes an "always" into the repository's
         // own .claude/settings.local.json, which is the user's file, not the session's.
         if (request.mcpServer == null && request.isMcpApproval) return AcpPermissionDecision.AskUser
         if (request.mcpServer != null && request.mcpServer.equals(ownServer, ignoreCase = true)) return allowOnce(request)
+        if (request.mcpServer != null && rules.allowsServer(request.mcpServer)) return allowOnce(request)
 
         // Codex files another server's MCP tool calls as execute: only a shell command is the agent's own.
         return when (request.kind) {
             AcpToolKind.Execute -> when {
                 request.mcpServer != null -> AcpPermissionDecision.AskUser
-                pushes(request.command ?: request.title) -> AcpPermissionDecision.AskUser
+                rules.askEveryCommand -> AcpPermissionDecision.AskUser
+                rules.askBefore.any { runs(request.command ?: request.title, it) } -> AcpPermissionDecision.AskUser
                 else -> allowOnce(request)
             }
             AcpToolKind.Read, AcpToolKind.Search, AcpToolKind.Think, AcpToolKind.Fetch -> allowOnce(request)
@@ -78,14 +82,28 @@ object AcpPermissionPolicy {
         }
     }
 
-    private val gitPush = Regex(
-        """(?<![\w-])git(?:\.exe)?(?:\s+(?:-C|-c|--git-dir|--work-tree)\s+\S+|\s+-\S+)*\s+push\b""",
-        RegexOption.IGNORE_CASE,
-    )
-
     /** Whether a command line runs `git push` anywhere in it, global options between the two words
      * included. */
-    fun pushes(command: String): Boolean = gitPush.containsMatchIn(command)
+    fun pushes(command: String): Boolean = runs(command, "git push")
+
+    /**
+     * Whether [command] holds [pattern]'s words in order anywhere in it, whatever the case: the first
+     * as a program, by its bare name, a path or with an .exe or .cmd after it, and git's global
+     * options allowed between it and the next word. So "git push" finds `cd src && git -C .. push`
+     * but not `git stash push`, and "rm -rf" finds `rm -rf build` but not `rm -r -f build`.
+     */
+    fun runs(command: String, pattern: String): Boolean {
+        val words = pattern.trim().split(whitespace).filter(String::isNotEmpty)
+        if (words.isEmpty()) return false
+        val program = Regex.escape(words.first())
+        val options = if (words.first().equals("git", ignoreCase = true)) GIT_OPTIONS else ""
+        val rest = words.drop(1).joinToString("") { """\s+""" + Regex.escape(it) }
+        return Regex("""(?<![\w.-])$program(?:\.exe|\.cmd)?$options$rest(?![\w-])""", RegexOption.IGNORE_CASE).containsMatchIn(command)
+    }
+
+    private val whitespace = Regex("""\s+""")
+
+    private const val GIT_OPTIONS = """(?:\s+(?:-C|-c|--git-dir|--work-tree)\s+\S+|\s+-\S+)*"""
 
     private fun allowOnce(request: AcpPermissionRequest): AcpPermissionDecision {
         for (wanted in listOf(AcpPermissionOptionKind.AllowOnce, AcpPermissionOptionKind.AllowAlways))

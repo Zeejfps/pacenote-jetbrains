@@ -23,6 +23,7 @@ import dev.pacenote.acp.AcpTraffic
 import dev.pacenote.model.CodeQuote
 import dev.pacenote.settings.AgentArgumentsProblem
 import dev.pacenote.settings.AgentPreset
+import dev.pacenote.settings.ApprovalPreferences
 import kotlinx.coroutines.CancellationException
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
@@ -74,16 +75,13 @@ class AcpPairingDriver private constructor(
     private val preset: AgentPreset,
     private val endpoints: AgentEndpoints,
     private val environment: () -> AcpEnvironment,
+    private val approvals: ApprovalPreferences,
     private val ui: CoroutineContext,
 ) : AgentDriver, AcpPermissionPrompt, AcpConnectionEvents {
     private val label = preset.name
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val inbox = Channel<AgentPrompt>(Channel.UNLIMITED)
     private val allowedEdits = EditAllowances(conversation.root)
-
-    // The MCP servers whose every tool the user allowed, by the name the agent gives, in lower case.
-    // On the conversation's thread.
-    private val allowedServers = HashSet<String>()
     private val refusedThisTurn = AtomicInteger()
     private val narratedThisTurn = AtomicInteger()
     private val withdrawn = ConcurrentHashMap.newKeySet<AcpPermissionRequest>()
@@ -143,7 +141,7 @@ class AcpPairingDriver private constructor(
             }
 
             val started = AcpAgentConnection.start(
-                harness, conversation.root, AcpMcpServer(SERVER_NAME, url), this, this, environment())
+                harness, conversation.root, AcpMcpServer(SERVER_NAME, url), this, this, environment()) { approvals.approvals }
             val connection = when (started) {
                 is AcpStart.Started -> started.connection
                 is AcpStart.Failed -> return post { conversation.fail("$label could not be started. ${started.reason}") }
@@ -289,7 +287,8 @@ class AcpPairingDriver private constructor(
     }
 
     /** Puts the request in front of the user, or answers it here with none when it is an edit to
-     * files they already allowed, or a call to an MCP server they did. On the conversation's thread. */
+     * files they already allowed. A call to an MCP server they always allow never gets here: the
+     * guard lets it through. On the conversation's thread. */
     private fun ask(request: AcpPermissionRequest, conversation: AgentConversation): PendingToolApproval? {
         val isEdit = request.kind == AcpToolKind.Edit && request.paths.isNotEmpty()
         if (isEdit && allowedEdits.cover(request.paths)) {
@@ -297,9 +296,7 @@ class AcpPairingDriver private constructor(
             conversation.transcript.add(PairingMessage.AllowedEdit(what, EditPreview.of(request.edits, conversation.root), request.edits))
             return null
         }
-        val server = request.mcpServer?.lowercase()
-        if (server != null && server in allowedServers) return null
-
+        val server = request.mcpServer
         val tool = McpToolName.parse(request.title)
         return when {
             isEdit -> conversation.transcript.askPermission(
@@ -313,8 +310,8 @@ class AcpPairingDriver private constructor(
             server != null -> conversation.transcript.askPermission(
                 tool?.toString() ?: request.title,
                 request.command ?: McpToolName.arguments(request.input),
-                allow = AllowanceScope.McpServer(tool?.server ?: McpToolName.serverName(request.mcpServer)),
-                grant = { allowedServers.add(server) },
+                allow = AllowanceScope.McpServer(tool?.server ?: McpToolName.serverName(server)),
+                grant = { approvals.alwaysAllowServer(server) },
             )
             else -> conversation.transcript.askPermission(
                 tool?.toString() ?: request.title,
@@ -406,9 +403,10 @@ class AcpPairingDriver private constructor(
             preset: AgentPreset,
             endpoints: AgentEndpoints,
             environment: () -> AcpEnvironment,
+            approvals: ApprovalPreferences,
             ui: CoroutineContext,
         ): AcpPairingDriver {
-            val driver = AcpPairingDriver(conversation, opening, preset, endpoints, environment, ui)
+            val driver = AcpPairingDriver(conversation, opening, preset, endpoints, environment, approvals, ui)
             driver.scope.launch { driver.run() }
             return driver
         }

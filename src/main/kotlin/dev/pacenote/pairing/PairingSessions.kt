@@ -5,6 +5,7 @@ import dev.pacenote.model.CodeQuote
 import dev.pacenote.model.PairingPresentation
 import dev.pacenote.model.PairingWorkspace
 import dev.pacenote.settings.AgentPreset
+import dev.pacenote.settings.ApprovalPreferences
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -167,6 +168,7 @@ class PairingSessions(
             workspace: PairingWorkspace,
             endpoints: AgentEndpoints,
             environment: () -> AcpEnvironment,
+            approvals: ApprovalPreferences,
             scope: CoroutineScope,
             ui: CoroutineContext,
         ): (AgentPreset, AgentOpening) -> AgentConversation = { preset, opening ->
@@ -188,7 +190,7 @@ class PairingSessions(
                     null
                 }
             }
-            conversation.attach(AcpPairingDriver.start(conversation, first, preset, endpoints, environment, ui))
+            conversation.attach(AcpPairingDriver.start(conversation, first, preset, endpoints, environment, approvals, ui))
             conversation
         }
     }
