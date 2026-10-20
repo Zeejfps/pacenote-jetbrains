@@ -1,0 +1,231 @@
+package dev.pacenote.ui
+
+import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.UIUtil
+import dev.pacenote.acp.AcpFileEdit
+import dev.pacenote.model.CodeQuote
+import dev.pacenote.model.DraftRequest
+import dev.pacenote.model.DraftSpan
+import dev.pacenote.model.FileLine
+import dev.pacenote.model.Milestone
+import dev.pacenote.model.StopTarget
+import dev.pacenote.pairing.AgentConversation
+import dev.pacenote.pairing.AgentOpening
+import dev.pacenote.pairing.AllowanceScope
+import dev.pacenote.pairing.EditPreview
+import dev.pacenote.pairing.NoticeTone
+import dev.pacenote.pairing.PairingMessage
+import dev.pacenote.pairing.PairingSession
+import dev.pacenote.pairing.PairingSessions
+import dev.pacenote.pairing.PairingStore
+import dev.pacenote.pairing.RecordingPairingPresentation
+import dev.pacenote.pairing.ScriptedWorkspace
+import dev.pacenote.pairing.ToolApprovalOutcome
+import dev.pacenote.pairing.UiThread
+import dev.pacenote.settings.AgentPreset
+import dev.pacenote.ui.support.Lifetime
+import dev.pacenote.ui.support.WrappingHtmlPane
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.nio.file.Path
+import com.intellij.ui.components.ActionLink
+import dev.pacenote.acp.AcpSessionUpdate
+import dev.pacenote.acp.AcpToolCallStatus
+import dev.pacenote.acp.AcpToolKind
+import dev.pacenote.ui.chat.ActivityRow
+import javax.swing.JButton
+import javax.swing.SwingUtilities
+import javax.swing.JComponent
+
+/** The whole conversation panel built over a conversation holding one of everything, laid out headless:
+ * what is on screen, and that answering a question changes it. */
+class ConversationPanelSmokeTest : BasePlatformTestCase() {
+    private val ui = UiThread()
+    private val sessions = PairingSessions { preset, opening ->
+        val conversation = AgentConversation(Path.of("C:/repo"), preset, { goal, transcript, deliver ->
+            PairingSession(PairingStore(goal, preset.name, transcript, RecordingPairingPresentation(), ScriptedWorkspace(), ui.scope, deliver), ui.scope)
+        }, ui.scope)
+        if (opening == AgentOpening.Blank) conversation.openOnFirstWords()
+        conversation
+    }
+
+    override fun tearDown() {
+        try {
+            ui.run { sessions.dispose() }
+            ui.close()
+        } finally {
+            super.tearDown()
+        }
+    }
+
+    private fun flush() {
+        repeat(3) { PlatformTestUtil.dispatchAllEventsInIdeEventQueue() }
+    }
+
+    private fun layout(component: JComponent, width: Int, height: Int) {
+        component.setSize(width, height)
+        repeat(3) {
+            UIUtil.dispatchAllInvocationEvents()
+            UIUtil.layoutRecursively(component)
+        }
+    }
+
+    private fun buttons(root: JComponent, text: String): List<JButton> =
+        UIUtil.findComponentsOfType(root, JButton::class.java).filter { it.text == text }
+
+    private fun conversationWithEverything(): Pair<AgentConversation, PairingMessage.Approval> = ui.run {
+        val conversation = sessions.openChat(AgentPreset.ClaudeCode)
+        conversation.markRunning()
+        val transcript = conversation.transcript
+        transcript.addFromUser(
+            "What does **this** do?",
+            CodeQuote.InFile("C:/repo/src/Client.kt", FileLine(3), FileLine(4), "fun fetch() {\n    call()\n}"),
+        )
+        transcript.addReply("It **fetches**.\n\n```kotlin\nfun fetch() = call()\n```\n\n" + "A long paragraph that wraps. ".repeat(20))
+        transcript.addNotice("Refused: not now", NoticeTone.Refused)
+        transcript.addNotice("Something broke", NoticeTone.Error)
+        val edits = listOf(AcpFileEdit("C:/repo/src/Client.kt", "call()", "retry { call() }"))
+        transcript.askPermission("Edit Client.kt", "Edit", EditPreview.of(edits, Path.of("C:/repo")), AllowanceScope.SameFiles, edits = edits)
+        transcript.add(PairingMessage.AllowedEdit("Edit Util.kt", EditPreview.of(edits, Path.of("C:/repo")), edits))
+        val session = conversation.beginSession("Add a retry")
+        session.store.setRoadmap(listOf(Milestone("Wrap the call", true), Milestone("Add a test", false)))
+        session.store.openStop(
+            StopTarget("src/Client.kt", "fetch", null), "Retry the call", "Because it **flaps**.",
+            DraftRequest("retry()", DraftSpan.After(12)), replace = false,
+        )
+        conversation to transcript.messages.value.filterIsInstance<PairingMessage.Approval>().single()
+    }
+
+    fun testTheActivityLineKeepsStopInReach_whenATitleIsTooLongForTheRow() {
+        val conversation = ui.run {
+            sessions.openChat(AgentPreset.ClaudeCode).apply {
+                markRunning()
+                beginTurn()
+                heard(AcpSessionUpdate.ToolCall("t", "./gradlew test --tests " + "Something".repeat(20), AcpToolKind.Execute, null))
+            }
+        }
+        val row = ActivityRow(conversation, Lifetime(testRootDisposable))
+        flush()
+
+        layout(row, 260, 40)
+
+        val stop = UIUtil.findComponentsOfType(row, ActionLink::class.java).single { it.text == "Stop" }
+        assertTrue(stop.isVisible)
+        val where = SwingUtilities.convertRectangle(stop.parent, stop.bounds, row)
+        assertTrue("Stop at $where in a row 260 wide", where.x >= 0 && where.x + where.width <= 260)
+    }
+
+    fun testPanelShowsTheSessionStopAndTranscriptAndAnAnsweredApprovalShowsHowItWent() {
+        val (conversation, approval) = conversationWithEverything()
+        val panel = ConversationPanel(conversation, project, Lifetime(testRootDisposable))
+
+        flush()
+        layout(panel, 460, 900)
+
+        assertEquals(1, buttons(panel, "Allow").size)
+        assertEquals(1, buttons(panel, "Deny").size)
+        assertEquals(1, buttons(panel, "Allow edits to this file").size)
+        assertEquals(1, buttons(panel, "Accept & next").size)
+        assertTrue(buttons(panel, "Next").isNotEmpty())
+        assertTrue(buttons(panel, "Skip").isNotEmpty())
+        val panes = UIUtil.findComponentsOfType(panel, WrappingHtmlPane::class.java)
+        assertTrue(panes.isNotEmpty())
+        assertTrue(panes.filter { it.isShowing || it.width > 0 }.all { it.height > 0 })
+
+        buttons(panel, "Allow").single().doClick()
+        flush()
+        layout(panel, 460, 900)
+
+        assertEquals(ToolApprovalOutcome.Approved, approval.pending.outcome.value)
+        assertTrue(buttons(panel, "Allow").isEmpty())
+        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved" })
+    }
+
+    fun testATurnInFlight_showsTheActivityLineInThePanel() {
+        // The opening message is in the transcript before the panel is made.
+        val conversation = ui.run {
+            sessions.openChat(AgentPreset.ClaudeCode).also {
+                it.markRunning()
+                it.transcript.addFromUser("What does this do?")
+            }
+        }
+        val panel = ConversationPanel(conversation, project, Lifetime(testRootDisposable))
+        flush()
+        layout(panel, 460, 600)
+        val row = UIUtil.findComponentsOfType(panel, ActivityRow::class.java).single()
+        assertFalse(row.isVisible)
+
+        ui.run { conversation.beginTurn() }
+        Thread.sleep(150)
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(row.isVisible)
+        assertTrue("row ${row.bounds}", row.height > 0 && row.width > 0)
+        val asked = UIUtil.findComponentsOfType(panel, WrappingHtmlPane::class.java).single { it.isShowing || it.height > 0 }
+        val askedAt = SwingUtilities.convertPoint(asked.parent, asked.location, panel).y
+        val rowAt = SwingUtilities.convertPoint(row.parent, row.location, panel).y
+        assertTrue("the line at $rowAt, under the message at $askedAt", rowAt > askedAt)
+        assertTrue(UIUtil.findComponentsOfType(row, JBLabel::class.java).any { it.isVisible && it.text == "Working" })
+
+        ui.run { conversation.heard(AcpSessionUpdate.ToolCall("t", "npm test", AcpToolKind.Execute, AcpToolCallStatus.InProgress)) }
+        Thread.sleep(150)
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(UIUtil.findComponentsOfType(row, JBLabel::class.java).any { it.isVisible && it.text == "npm test" })
+    }
+
+    fun testAnMcpToolCall_canBeAllowedForItsWholeServer() {
+        var granted = false
+        val conversation = ui.run {
+            sessions.openChat(AgentPreset.ClaudeCode).apply {
+                markRunning()
+                transcript.askPermission("Claude Docs: read", "id: d1", allow = AllowanceScope.McpServer("Claude Docs"), grant = { granted = true })
+            }
+        }
+        val panel = ConversationPanel(conversation, project, Lifetime(testRootDisposable))
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Allow Claude Docs: read?" })
+        buttons(panel, "Allow all Claude Docs tools").single().doClick()
+        flush()
+        layout(panel, 460, 600)
+
+        assertTrue(granted)
+        assertTrue(UIUtil.findComponentsOfType(panel, JBLabel::class.java).any { it.text == "Approved, and every Claude Docs tool from now on" })
+    }
+
+    fun testHtmlTextIsTallerWhenTheWidthIsNarrower() {
+        val pane = WrappingHtmlPane()
+        pane.showMarkdown("word ".repeat(200))
+
+        layout(pane, 600, 10)
+        val wide = pane.preferredSize.height
+        layout(pane, 150, 10)
+        val narrow = pane.preferredSize.height
+
+        assertTrue("wide=$wide narrow=$narrow", narrow > wide * 2)
+    }
+
+    fun testStreamingNarrationGrowsTheRowItIsIn() {
+        val conversation = ui.run { sessions.openChat(AgentPreset.ClaudeCode).also { it.markRunning() } }
+        val text = MutableStateFlow("first")
+        ui.run { conversation.transcript.add(PairingMessage.Narration(text.asStateFlow())) }
+        val panel = ConversationPanel(conversation, project, Lifetime(testRootDisposable))
+        flush()
+        layout(panel, 400, 600)
+        val before = UIUtil.findComponentsOfType(panel, WrappingHtmlPane::class.java).sumOf { it.height }
+
+        text.value = "first\n\n" + "and a lot more text. ".repeat(60)
+        Thread.sleep(150)
+        flush()
+        layout(panel, 400, 600)
+
+        val after = UIUtil.findComponentsOfType(panel, WrappingHtmlPane::class.java).sumOf { it.height }
+        assertTrue("before=$before after=$after", after > before)
+    }
+}

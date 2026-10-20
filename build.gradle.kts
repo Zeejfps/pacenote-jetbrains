@@ -6,8 +6,8 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
-group = "dev.diffdino"
-version = "0.1.4"
+group = "dev.pacenote"
+version = "0.1.5"
 
 repositories {
     mavenCentral()

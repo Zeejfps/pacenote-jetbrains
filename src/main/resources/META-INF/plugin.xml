@@ -1,73 +1,74 @@
 <idea-plugin>
-    <id>dev.diffdino.pairing</id>
-    <name>DiffDino Pairing</name>
-    <vendor>DiffDino</vendor>
+    <id>dev.pacenote</id>
+    <name>Pacenote AI</name>
+    <vendor>Pacenote</vendor>
     <description><![CDATA[
-    Pair programming with an AI agent over the Agent Client Protocol: the agent navigates, you write.
-    Chat with approvals, pairing sessions with stops, and agent drafts shown in the editor to accept.
+    Pair with your coding agent (Claude Code, Codex, Gemini) stop by stop in your editor: each change
+    drafted where it goes, with why, for you to accept or skip. Chat with the agent too, with approvals
+    for what it would change, over the Agent Client Protocol.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>Git4Idea</depends>
 
-    <resource-bundle>messages.DiffDinoBundle</resource-bundle>
+    <resource-bundle>messages.PacenoteBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="DiffDino Agent" anchor="right" icon="/icons/dino.png"
-                    factoryClass="dev.diffdino.pairing.ui.AgentToolWindowFactory"/>
-        <applicationService serviceImplementation="dev.diffdino.pairing.settings.AgentSettings"/>
-        <applicationService serviceImplementation="dev.diffdino.pairing.mcp.AgentToolServer"/>
-        <projectService serviceImplementation="dev.diffdino.pairing.pairing.PairingProjectService"/>
-        <postStartupActivity implementation="dev.diffdino.pairing.ui.ToolWindowVisibility"/>
-        <applicationConfigurable parentId="tools" id="dev.diffdino.pairing.settings.agents"
-                                 instance="dev.diffdino.pairing.ui.settings.AgentPresetsConfigurable"
-                                 displayName="DiffDino"/>
+        <toolWindow id="Pacenote" anchor="right" icon="/icons/pacenote.svg"
+                    factoryClass="dev.pacenote.ui.AgentToolWindowFactory"/>
+        <applicationService serviceImplementation="dev.pacenote.settings.AgentSettings"/>
+        <applicationService serviceImplementation="dev.pacenote.mcp.AgentToolServer"/>
+        <projectService serviceImplementation="dev.pacenote.pairing.PairingProjectService"/>
+        <postStartupActivity implementation="dev.pacenote.ui.ToolWindowVisibility"/>
+        <applicationConfigurable parentId="tools" id="dev.pacenote.settings.agents"
+                                 instance="dev.pacenote.ui.settings.AgentPresetsConfigurable"
+                                 displayName="Pacenote"/>
     </extensions>
 
     <!-- Editor: drafts and spotlights drawn in the project's editors -->
     <extensions defaultExtensionNs="com.intellij">
-        <projectService serviceInterface="dev.diffdino.pairing.model.PairingPresentation"
-                        serviceImplementation="dev.diffdino.pairing.editor.EditorPairingPresentation"/>
-        <projectService serviceInterface="dev.diffdino.pairing.model.CodeSpotlights"
-                        serviceImplementation="dev.diffdino.pairing.editor.EditorCodeSpotlights"/>
-        <projectService serviceImplementation="dev.diffdino.pairing.editor.PairingEditorService"/>
-        <actionPromoter implementation="dev.diffdino.pairing.editor.DraftActionPromoter"/>
+        <projectService serviceInterface="dev.pacenote.model.PairingPresentation"
+                        serviceImplementation="dev.pacenote.editor.EditorPairingPresentation"/>
+        <projectService serviceInterface="dev.pacenote.model.CodeSpotlights"
+                        serviceImplementation="dev.pacenote.editor.EditorCodeSpotlights"/>
+        <projectService serviceImplementation="dev.pacenote.editor.PairingEditorService"/>
+        <actionPromoter implementation="dev.pacenote.editor.DraftActionPromoter"/>
     </extensions>
 
     <actions>
-        <action id="DiffDino.AcceptDraftAndNext" class="dev.diffdino.pairing.editor.actions.AcceptDraftAndNextAction"
-                text="DiffDino: Accept Draft and Next" description="Take the agent's draft for this stop and go on to the next stop">
+        <action id="Pacenote.AcceptDraftAndNext" class="dev.pacenote.editor.actions.AcceptDraftAndNextAction"
+                text="Pacenote: Accept Draft and Next" description="Take the agent's draft for this stop and go on to the next stop">
             <keyboard-shortcut keymap="$default" first-keystroke="control ENTER"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ENTER"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta ENTER"/>
         </action>
-        <action id="DiffDino.AcceptDraft" class="dev.diffdino.pairing.editor.actions.AcceptDraftAction"
-                text="DiffDino: Accept Draft" description="Take the agent's draft for this stop into the file">
+        <action id="Pacenote.AcceptDraft" class="dev.pacenote.editor.actions.AcceptDraftAction"
+                text="Pacenote: Accept Draft" description="Take the agent's draft for this stop into the file">
             <keyboard-shortcut keymap="$default" first-keystroke="control shift ENTER"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift ENTER"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift ENTER"/>
         </action>
-        <action id="DiffDino.NextStop" class="dev.diffdino.pairing.editor.actions.NextStopAction"
-                text="DiffDino: Next Stop" description="Leave the agent's draft and go on to the next stop">
+        <action id="Pacenote.NextStop" class="dev.pacenote.editor.actions.NextStopAction"
+                text="Pacenote: Next Stop" description="Leave the agent's draft and go on to the next stop">
             <keyboard-shortcut keymap="$default" first-keystroke="control alt ENTER"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt ENTER"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt ENTER"/>
         </action>
-        <group id="DiffDino.Agent" text="DiffDino" popup="true">
-            <action id="DiffDino.OpenAgentChat"
-                    class="dev.diffdino.pairing.ui.action.OpenAgentChatAction"
-                    text="DiffDino: Open Agent Chat"
-                    description="Open the DiffDino agent chat, or start one"/>
-            <action id="DiffDino.StartPairingSession"
-                    class="dev.diffdino.pairing.ui.action.StartPairingSessionAction"
-                    text="DiffDino: Start Pairing Session..."
+        <group id="Pacenote.Agent" text="Pacenote" popup="true">
+            <action id="Pacenote.OpenAgentChat"
+                    class="dev.pacenote.ui.action.OpenAgentChatAction"
+                    text="Pacenote: Open Agent Chat"
+                    description="Open the Pacenote agent chat, or start one"/>
+            <action id="Pacenote.StartPairingSession"
+                    class="dev.pacenote.ui.action.StartPairingSessionAction"
+                    text="Pacenote: Start Pairing Session..."
                     description="Describe a change and have the agent take you through it one place at a time"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </group>
-        <action id="DiffDino.SendSelectionToAgent"
-                class="dev.diffdino.pairing.ui.action.SendSelectionToAgentAction"
-                text="Send Selection to DiffDino Agent"
-                description="Ask the DiffDino agent about the selected code">
+        <action id="Pacenote.SendSelectionToAgent"
+                class="dev.pacenote.ui.action.SendSelectionToAgentAction"
+                text="Send Selection to Pacenote"
+                description="Ask the Pacenote agent about the selected code">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
     </actions>
