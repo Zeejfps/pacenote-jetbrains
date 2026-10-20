@@ -1,5 +1,8 @@
 package dev.diffdino.pairing.pairing
 
+import dev.diffdino.pairing.acp.AcpSessionUpdate
+import dev.diffdino.pairing.acp.AcpToolCallStatus
+import dev.diffdino.pairing.acp.AcpToolKind
 import dev.diffdino.pairing.mcp.AgentTool
 import dev.diffdino.pairing.model.PairingPhase
 import dev.diffdino.pairing.settings.AgentPreset
@@ -24,9 +27,14 @@ class AgentConversationTest {
     private val presentation = RecordingPairingPresentation()
     private val workspace = ScriptedWorkspace()
     private val told = mutableListOf<AgentPrompt>()
+    private var stopsAsked = 0
     private val driver = object : AgentDriver {
         override fun tell(prompt: AgentPrompt) {
             told.add(prompt)
+        }
+
+        override fun stopTurn() {
+            stopsAsked++
         }
 
         override fun dispose() {}
@@ -79,6 +87,46 @@ class AgentConversationTest {
         session.skip()
 
         assertTrue(told.last().text.startsWith("DiffDino pairing: the user skipped stop 1"))
+    }
+
+    @Test
+    fun whatTheAgentDoes_inATurn_isItsActivity() = ui.run {
+        val conversation = sessions.openChat(AgentPreset.ClaudeCode)
+        conversation.markRunning()
+        assertNull(conversation.activity.value)
+
+        conversation.beginTurn()
+        conversation.heard(AcpSessionUpdate.ToolCall("t1", "npm test", AcpToolKind.Execute, AcpToolCallStatus.InProgress))
+
+        assertEquals("npm test", conversation.activity.value!!.current!!.title)
+        waitFor("the agent to be at work") { conversation.isWorking.value }
+        conversation.endTurn()
+        assertNull(conversation.activity.value)
+    }
+
+    @Test
+    fun stoppingTheTurn_asksTheAgentOnce_andWithdrawsAQuestionItWaitsOn() = ui.run {
+        val conversation = sessions.openChat(AgentPreset.ClaudeCode)
+        conversation.markRunning()
+        conversation.beginTurn()
+        val question = conversation.transcript.askPermission("Run rm -rf build", "rm -rf build")
+
+        conversation.stopTurn()
+        conversation.stopTurn()
+
+        assertEquals(1, stopsAsked)
+        assertTrue(conversation.isStopping)
+        assertEquals(ToolApprovalOutcome.Cancelled, question.outcome.value)
+    }
+
+    @Test
+    fun stoppingBetweenTurns_doesNothing() = ui.run {
+        val conversation = sessions.openChat(AgentPreset.ClaudeCode)
+        conversation.markRunning()
+
+        conversation.stopTurn()
+
+        assertEquals(0, stopsAsked)
     }
 
     @Test

@@ -27,12 +27,12 @@ class TranscriptView(
     private val scroll = ScrollableColumn.scrolling(column)
     private val follow = StickToBottom(scroll)
     private val shown = ArrayList<Pair<PairingMessage, Lifetime>>()
-    private val typing = TypingIndicator(conversation.isComposing, lifetime)
+    private val activity = ActivityRow(conversation, lifetime)
 
     init {
         isOpaque = false
         column.border = JBUI.Borders.empty(12)
-        column.add(typing)
+        column.add(activity)
         follow.follow(column)
         add(scroll, BorderLayout.CENTER)
         lifetime.bind(conversation.transcript.messages) { sync(it) }

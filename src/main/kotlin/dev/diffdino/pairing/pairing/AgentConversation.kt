@@ -1,5 +1,6 @@
 package dev.diffdino.pairing.pairing
 
+import dev.diffdino.pairing.acp.AcpSessionUpdate
 import dev.diffdino.pairing.model.CodeQuote
 import dev.diffdino.pairing.model.PairingPhase
 import dev.diffdino.pairing.settings.AgentPreset
@@ -72,6 +73,9 @@ interface AgentDriver {
      * turn already in flight. */
     fun tell(prompt: AgentPrompt)
 
+    /** Asks the agent to stop the turn in flight; the turn ends when it does. Returns at once. */
+    fun stopTurn()
+
     /** Stops the agent. Returns at once; the process goes in the background. */
     fun dispose()
 }
@@ -128,8 +132,15 @@ class AgentConversation(
     private var sessionWatch: Job? = null
     private var toldOpening = true
     private var disposed = false
+    private val tracker = AgentActivityTracker()
 
     val transcript = AgentTranscript()
+
+    /** What the agent is doing in the turn in flight; null between turns. */
+    val activity: StateFlow<AgentActivity?> get() = tracker.activity
+
+    /** Whether the user stopped the turn in flight, which hasn't ended yet. */
+    val isStopping: Boolean get() = tracker.activity.value?.stopping == true
 
     val phase: StateFlow<AgentPhase> = _phase.asStateFlow()
 
@@ -142,6 +153,13 @@ class AgentConversation(
         _session.flatMapLatest { it?.store?.phase ?: flowOf(null) },
         _phase,
     ) { narration, sessionPhase, phase -> composing(narration == null, sessionPhase, phase) }
+        .stateIn(own, SharingStarted.Eagerly, false)
+
+    /** True while the agent is at work on something the user waits for, whatever it has written so far. */
+    val isWorking: StateFlow<Boolean> = combine(
+        _session.flatMapLatest { it?.store?.phase ?: flowOf(null) },
+        _phase,
+    ) { sessionPhase, phase -> composing(true, sessionPhase, phase) }
         .stateIn(own, SharingStarted.Eagerly, false)
 
     /** Whether what the user types in the panel reaches the agent. */
@@ -226,15 +244,37 @@ class AgentConversation(
     }
 
     fun beginTurn() {
+        tracker.beginTurn()
         transcript.beginAgentTurn()
         if (_phase.value is AgentPhase.Running) _phase.value = AgentPhase.Running(true)
         _session.value?.store?.markTurnStarted()
     }
 
     fun endTurn() {
+        tracker.endTurn()
         transcript.closeNarration()
         if (_phase.value is AgentPhase.Running) _phase.value = AgentPhase.Running(false)
         _session.value?.store?.markTurnEnded()
+    }
+
+    /** Something the agent sent while its turn runs: a step it took, reasoning, or prose. */
+    fun heard(update: AcpSessionUpdate) {
+        when (update) {
+            is AcpSessionUpdate.ToolCall -> tracker.toolCall(update.id, update.title, update.kind, update.status)
+            is AcpSessionUpdate.ThoughtChunk -> tracker.thought()
+            is AcpSessionUpdate.MessageChunk -> tracker.wrote()
+            is AcpSessionUpdate.Plan, is AcpSessionUpdate.Other -> {}
+        }
+    }
+
+    /** The user stops the agent's turn: a question it was waiting on is withdrawn, and the agent
+     * waits for what the user says next. */
+    fun stopTurn() {
+        val activity = tracker.activity.value
+        if (disposed || activity == null || activity.stopping) return
+        tracker.stopping()
+        for (message in transcript.messages.value) (message as? PairingMessage.Approval)?.pending?.cancel()
+        driver?.stopTurn()
     }
 
     /** The agent could not be started, or died; a live session fails with it. */
@@ -256,6 +296,7 @@ class AgentConversation(
     private fun lose(reason: String): Boolean {
         if (disposed || _phase.value is AgentPhase.Gone) return false
         transcript.closeNarration()
+        tracker.endTurn()
         _phase.value = AgentPhase.Gone(reason)
         return true
     }

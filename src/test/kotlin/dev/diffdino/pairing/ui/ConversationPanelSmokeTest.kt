@@ -29,7 +29,12 @@ import dev.diffdino.pairing.ui.support.WrappingHtmlPane
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.nio.file.Path
+import com.intellij.ui.components.ActionLink
+import dev.diffdino.pairing.acp.AcpSessionUpdate
+import dev.diffdino.pairing.acp.AcpToolKind
+import dev.diffdino.pairing.ui.chat.ActivityRow
 import javax.swing.JButton
+import javax.swing.SwingUtilities
 import javax.swing.JComponent
 
 /** The whole conversation panel built over a conversation holding one of everything, laid out headless:
@@ -89,6 +94,25 @@ class ConversationPanelSmokeTest : BasePlatformTestCase() {
             DraftRequest("retry()", DraftSpan.After(12)), replace = false,
         )
         conversation to transcript.messages.value.filterIsInstance<PairingMessage.Approval>().single()
+    }
+
+    fun testTheActivityLineKeepsStopInReach_whenATitleIsTooLongForTheRow() {
+        val conversation = ui.run {
+            sessions.openChat(AgentPreset.ClaudeCode).apply {
+                markRunning()
+                beginTurn()
+                heard(AcpSessionUpdate.ToolCall("t", "./gradlew test --tests " + "Something".repeat(20), AcpToolKind.Execute, null))
+            }
+        }
+        val row = ActivityRow(conversation, Lifetime(testRootDisposable))
+        flush()
+
+        layout(row, 260, 40)
+
+        val stop = UIUtil.findComponentsOfType(row, ActionLink::class.java).single { it.text == "Stop" }
+        assertTrue(stop.isVisible)
+        val where = SwingUtilities.convertRectangle(stop.parent, stop.bounds, row)
+        assertTrue("Stop at $where in a row 260 wide", where.x >= 0 && where.x + where.width <= 260)
     }
 
     fun testPanelShowsTheSessionStopAndTranscriptAndAnAnsweredApprovalShowsHowItWent() {

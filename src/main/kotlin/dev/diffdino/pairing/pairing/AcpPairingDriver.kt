@@ -31,6 +31,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.PrintWriter
@@ -39,6 +41,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Where an agent the plugin starts reaches the plugin's MCP server. */
@@ -61,7 +64,8 @@ fun interface AgentEndpoints {
  * or in prose, gets a nudge to carry on, and an agent that keeps doing that is reported gone from
  * the session. The write guard lives in the connection; what it refused is shown, and what it has
  * no rule for is asked of the user in the transcript. Each turn runs in the mode its moment calls
- * for: the asking mode while a pairing session is live, the preset's chat mode otherwise.
+ * for: the asking mode while a pairing session is live, the preset's chat mode otherwise. A turn the
+ * user stopped is not nudged on: the agent waits for what they say next.
  */
 class AcpPairingDriver private constructor(
     private val conversation: AgentConversation,
@@ -77,6 +81,15 @@ class AcpPairingDriver private constructor(
     private val allowedEdits = EditAllowances(conversation.root)
     private val refusedThisTurn = AtomicInteger()
     private val narratedThisTurn = AtomicInteger()
+    private val withdrawn = ConcurrentHashMap.newKeySet<AcpPermissionRequest>()
+
+    // Which turn is in flight, and which one the user stopped. A stop takes the turn in flight
+    // when it is handled, under the lock the loop also takes to begin and end a turn, so it never
+    // lands on the turn after, and one handled after the turn ended does nothing.
+    private val turns = Mutex()
+    private var turnInFlight = 0
+    private var stoppedTurn = 0
+    private var turnsBegun = 0
     private val trace = Trace.open()
 
     @Volatile
@@ -87,6 +100,17 @@ class AcpPairingDriver private constructor(
 
     override fun tell(prompt: AgentPrompt) {
         inbox.trySend(prompt)
+    }
+
+    override fun stopTurn() {
+        val running = connection ?: return
+        scope.launch {
+            turns.withLock {
+                if (turnInFlight == 0) return@withLock
+                stoppedTurn = turnInFlight
+                running.cancelTurn()
+            }
+        }
     }
 
     // A quote goes as the file's text attached to the turn where the agent takes that, and as
@@ -151,13 +175,20 @@ class AcpPairingDriver private constructor(
                 current = mode
             }
 
+            val turn = ++turnsBegun
+            turns.withLock { turnInFlight = turn }
             post { conversation.beginTurn() }
             val reason = connection.prompt(content(connection, prompt))
+            val stoppedByUser = turns.withLock {
+                turnInFlight = 0
+                stoppedTurn == turn
+            }
             post { conversation.endTurn() }
             if (stopped) return
+            if (stoppedByUser) post { conversation.transcript.addNotice("You stopped $label.", NoticeTone.Info) }
 
             var pairing = onUi { conversation.isPairing }
-            if (reason == AcpStopReason.Refusal) {
+            if (reason == AcpStopReason.Refusal && !stoppedByUser) {
                 val refused = "$label refused to continue."
                 if (pairing) post { conversation.session.value?.store?.markDisconnected(refused) }
                 else post { conversation.transcript.addNotice(refused, NoticeTone.Error) }
@@ -172,7 +203,7 @@ class AcpPairingDriver private constructor(
                 continue
             }
 
-            if (pairing) {
+            if (pairing && !stoppedByUser) {
                 val handedOver = narratedThisTurn.get() > 0 || onUi { conversation.session.value?.store?.hasHandedOver ?: true }
                 idle = if (handedOver) 0 else idle + 1
                 if (idle in 1 until IDLE_TURN_LIMIT) {
@@ -196,14 +227,22 @@ class AcpPairingDriver private constructor(
             is AcpSessionUpdate.MessageChunk -> {
                 if (update.text.isEmpty()) return
                 if (update.text.isNotBlank()) narratedThisTurn.set(1)
-                post { conversation.transcript.appendNarration(update.text) }
+                post {
+                    conversation.heard(update)
+                    conversation.transcript.appendNarration(update.text)
+                }
             }
-            is AcpSessionUpdate.ToolCall -> post { conversation.transcript.breakNarration() }
-            is AcpSessionUpdate.ThoughtChunk, is AcpSessionUpdate.Plan, is AcpSessionUpdate.Other -> {}
+            is AcpSessionUpdate.ToolCall -> post {
+                conversation.heard(update)
+                conversation.transcript.breakNarration()
+            }
+            is AcpSessionUpdate.ThoughtChunk -> post { conversation.heard(update) }
+            is AcpSessionUpdate.Plan, is AcpSessionUpdate.Other -> {}
         }
     }
 
     override fun permissionDecided(request: AcpPermissionRequest, verdict: AcpPermissionVerdict) {
+        if (withdrawn.remove(request)) return
         if (verdict != AcpPermissionVerdict.Rejected) return
         refusedThisTurn.incrementAndGet()
         val what = request.title.ifEmpty { request.kind.name }
@@ -215,14 +254,33 @@ class AcpPairingDriver private constructor(
     }
 
     override suspend fun ask(request: AcpPermissionRequest): String? {
-        val pending = onUi { ask(request, conversation) } ?: return optionFor(request, approved = true)
+        // A question that comes once the user has stopped the turn is withdrawn before it is asked.
+        val asked = onUi { if (conversation.isStopping) Asked.Withdrawn else Asked.Put(ask(request, conversation)) }
+        val pending = when (asked) {
+            Asked.Withdrawn -> return withdraw(request)
+            is Asked.Put -> asked.pending ?: return optionFor(request, approved = true)
+        }
         val approved = try {
             pending.await()
         } catch (e: CancellationException) {
             post { pending.cancel() }
             throw e
         }
+        if (pending.outcome.value == ToolApprovalOutcome.Cancelled) return withdraw(request)
         return optionFor(request, approved)
+    }
+
+    private sealed interface Asked {
+        data object Withdrawn : Asked
+
+        /** In front of the user, or null when answered here. */
+        data class Put(val pending: PendingToolApproval?) : Asked
+    }
+
+    // The agent is told the question was cancelled, and the user isn't told it was refused.
+    private fun withdraw(request: AcpPermissionRequest): String? {
+        withdrawn.add(request)
+        return null
     }
 
     /** Puts the request in front of the user, or answers it here with none when it is an edit to
