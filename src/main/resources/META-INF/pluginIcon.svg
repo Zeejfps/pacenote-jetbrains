@@ -1,12 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="40" height="40" viewBox="0 0 40 40"
+     fill="none">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FF8A3D"/>
-      <stop offset="1" stop-color="#E5482E"/>
+    <linearGradient id="bg"
+                    x1="0" y1="0" x2="40" y2="40"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F47B35"/>
+      <stop offset="1" stop-color="#D84A32"/>
     </linearGradient>
   </defs>
-  <rect width="40" height="40" rx="8" fill="url(#bg)"/>
-  <circle cx="12" cy="30" r="3" fill="#FFFFFF"/>
-  <path d="M12 24V20a8 8 0 0 1 8-8h9" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M24 6.5 29.5 12 24 17.5" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect width="40" height="40" rx="9" fill="url(#bg)"/>
+
+  <g stroke="#FFFFFF" stroke-width="3"
+     stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="28" r="3.5"/>
+    <path d="M11 24.5V24
+             A4 4 0 0 1 15 20
+             H22
+             A5 5 0 0 0 27 15
+             V9"/>
+    <path d="M22.5 13.5 27 9 31.5 13.5"/>
+  </g>
 </svg>
