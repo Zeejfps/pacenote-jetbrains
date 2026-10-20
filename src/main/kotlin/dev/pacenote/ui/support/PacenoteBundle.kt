@@ -7,7 +7,9 @@ private const val BUNDLE = "messages.PacenoteBundle"
 private const val MNEMONIC_MARKER = '\u001B'
 
 /** The plugin's user-facing text. An ampersand in it is an ampersand, not a mnemonic. */
-object PacenoteBundle : DynamicBundle(BUNDLE) {
+object PacenoteBundle {
+    private val bundle = DynamicBundle(PacenoteBundle::class.java, BUNDLE)
+
     fun message(@PropertyKey(resourceBundle = BUNDLE) key: String, vararg params: Any): String =
-        getMessage(key, *params).replace(MNEMONIC_MARKER, '&')
+        bundle.getMessage(key, *params).replace(MNEMONIC_MARKER, '&')
 }

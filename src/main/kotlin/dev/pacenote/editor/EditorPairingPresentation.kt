@@ -21,6 +21,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.Disposer
@@ -143,7 +144,8 @@ class EditorPairingPresentation(private val project: Project) : PairingPresentat
     // Opens the file in this project's window and puts the caret in the middle of the screen.
     private fun open(absolutePath: String, at: TextPosition) {
         val file = places.fileAt(absolutePath, refresh = false) ?: return
-        val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file), true) ?: return
+        val editor = FileEditorManager.getInstance(project).openFileEditor(OpenFileDescriptor(project, file), true)
+            .firstNotNullOfOrNull { (it as? TextEditor)?.editor } ?: return
         editor.caretModel.moveToOffset(editor.document.offsetOf(at))
         editor.selectionModel.removeSelection()
         editor.scrollingModel.scrollToCaret(ScrollType.CENTER)

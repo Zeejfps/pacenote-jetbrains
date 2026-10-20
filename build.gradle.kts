@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.pacenote"
-version = "0.1.9"
+version = "0.1.10"
 
 repositories {
     mavenCentral()
@@ -46,7 +46,7 @@ intellijPlatform {
             sinceBuild = "262"
         }
         changeNotes = """
-            <h3>0.1.9</h3>
+            <h3>0.1.10</h3>
             <ul>
               <li>Each agent preset can start its adapter with its own command, such as a different Node or a pinned adapter version.</li>
               <li>Presets can set environment variables on top of the IDE's. <code>${'$'}NAME</code> refers to an existing variable, and the command is looked up on the PATH the preset sets.</li>

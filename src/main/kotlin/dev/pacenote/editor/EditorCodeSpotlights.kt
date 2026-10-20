@@ -8,6 +8,7 @@ import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
@@ -115,7 +116,8 @@ class EditorCodeSpotlights(private val project: Project) : CodeSpotlights, Dispo
 
     private suspend fun display(source: Read.Found, path: String, line: Int, runs: List<SpotlitRun>): ShowOutcome =
         withContext(Dispatchers.EDT) {
-            val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, source.file), true)
+            val editor = FileEditorManager.getInstance(project).openFileEditor(OpenFileDescriptor(project, source.file), true)
+                .firstNotNullOfOrNull { (it as? TextEditor)?.editor }
                 ?: return@withContext ShowOutcome.Missed("$path can't be opened as text.")
             val document = editor.document
             clear()
