@@ -1,39 +1,50 @@
 package dev.pacenote.ui.settings
 
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.openapi.ui.panel.ComponentPanelBuilder
+import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.CollectionListModel
 import com.intellij.ui.SimpleListCellRenderer
-import com.intellij.ui.TitledSeparator
+import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.ToolbarDecorator
-import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBRadioButton
-import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
-import com.intellij.util.ui.FormBuilder
+import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.Cell
+import com.intellij.ui.dsl.builder.LabelPosition
+import com.intellij.ui.dsl.builder.TopGap
+import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.layout.selected
 import com.intellij.util.ui.JBUI
+import dev.pacenote.acp.AcpEnvironment
 import dev.pacenote.acp.AcpHarness
 import dev.pacenote.acp.McpToolName
 import dev.pacenote.settings.AgentArguments
+import dev.pacenote.settings.AgentArgumentsParse
 import dev.pacenote.settings.AgentArgumentsProblem
 import dev.pacenote.settings.AgentKind
 import dev.pacenote.settings.AgentPermission
 import dev.pacenote.settings.AgentPresetId
 import dev.pacenote.settings.AgentSettings
+import dev.pacenote.settings.AgentVariables
+import dev.pacenote.settings.AgentVariablesParse
 import dev.pacenote.settings.ApprovalRules
-import dev.pacenote.ui.support.ChatColors
 import dev.pacenote.ui.support.PacenoteBundle
 import dev.pacenote.ui.support.ScrollableColumn
 import java.awt.BorderLayout
 import java.awt.Dimension
-import javax.swing.ButtonGroup
 import javax.swing.DefaultComboBoxModel
-import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
@@ -41,14 +52,17 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
 /**
- * Tools | Pacenote: the agent presets the chat, pairing and Send to agent run, the agent the chat
- * opens with, and the approval rules the write guard adds to its own.
+ * Tools | Pacenote: the agent presets the chat, pairing and Send to agent run, the one the chat
+ * opens with, and the approval rules the write guard adds to its own. The presets are a list and the
+ * form of the one selected; edits stay in a [PresetsEditorModel] until applied.
  */
 class AgentPresetsConfigurable : Configurable {
     private val settings = AgentSettings.getInstance()
     private var model = PresetsEditorModel(settings.presets, settings.chatAgent)
-    private var panel: JComponent? = null
+    private var validation: Disposable? = null
+    private var loading = false
 
+    private val chatAgent = ComboBox<PresetDraft>()
     private val listModel = CollectionListModel<PresetDraft>()
     private val list = JBList(listModel)
     private val name = JBTextField()
@@ -57,12 +71,10 @@ class AgentPresetsConfigurable : Configurable {
     private val arguments = JBTextField()
     private val command = JBTextField()
     private val environment = JBTextArea(3, 0)
-    private val problem = JBLabel().apply { foreground = ChatColors.dangerText }
-    private val chatAgent = ComboBox<PresetDraft>()
-    private var loading = false
+    private lateinit var argumentsCell: Cell<JBTextField>
 
-    private val allowCommands = JBRadioButton(PacenoteBundle.message("settings.commands.allow"))
-    private val askCommands = JBRadioButton(PacenoteBundle.message("settings.commands.ask"))
+    private lateinit var allowCommands: JBRadioButton
+    private lateinit var askCommands: JBRadioButton
     private val askBefore = JBTextArea(4, 0)
     private val serversModel = CollectionListModel<String>()
     private val servers = JBList(serversModel)
@@ -71,89 +83,127 @@ class AgentPresetsConfigurable : Configurable {
 
     override fun createComponent(): JComponent {
         model = PresetsEditorModel(settings.presets, settings.chatAgent)
+        wireFields()
+
+        // Each field with its label above it and its hint below, so the form needs no label
+        // column to line up and its fields take the width there is.
+        val details = panel {
+            row { cell(name).label(PacenoteBundle.message("settings.name"), LabelPosition.TOP).align(AlignX.FILL) }
+            row { cell(kind).label(PacenoteBundle.message("settings.agent"), LabelPosition.TOP) }
+            row {
+                cell(permission).label(PacenoteBundle.message("settings.permission"), LabelPosition.TOP)
+                    .comment(PacenoteBundle.message("settings.permission.hint"))
+            }
+            row {
+                argumentsCell = cell(arguments).label(PacenoteBundle.message("settings.arguments"), LabelPosition.TOP).align(AlignX.FILL)
+                    .comment(argumentsHint(AgentKind.ClaudeCode))
+                    .validationOnInput { field -> argumentsProblem(field.text)?.let { error(describe(PresetProblem.Arguments(it))) } }
+            }
+            row {
+                cell(command).label(PacenoteBundle.message("settings.command"), LabelPosition.TOP).align(AlignX.FILL)
+                    .comment(PacenoteBundle.message("settings.command.hint"))
+                    .validationOnInput { field ->
+                        if (AgentArguments.split(field.text) == null) error(describe(PresetProblem.CommandQuote)) else null
+                    }
+            }
+            row {
+                scrollCell(environment).label(PacenoteBundle.message("settings.environment"), LabelPosition.TOP).align(AlignX.FILL)
+                    .comment(environmentHint())
+                    .validationOnInput { field ->
+                        (AgentVariables.parse(field.text) as? AgentVariablesParse.Invalid)?.let { error(describe(PresetProblem.Environment(it.line))) }
+                    }
+            }
+        }
+        val editor = JPanel(BorderLayout(JBUI.scale(EDITOR_GAP), 0)).apply {
+            isOpaque = false
+            add(presetList(), BorderLayout.WEST)
+            add(details, BorderLayout.CENTER)
+        }
+
+        val form = panel {
+            group(PacenoteBundle.message("settings.agents")) {
+                row { comment(PacenoteBundle.message("settings.description")) }
+                row { cell(editor).align(AlignX.FILL) }
+                row {
+                    cell(chatAgent).label(PacenoteBundle.message("settings.chat.agent"), LabelPosition.TOP)
+                        .comment(PacenoteBundle.message("settings.chat.agent.hint"))
+                }.topGap(TopGap.SMALL)
+            }
+
+            group(PacenoteBundle.message("settings.approvals")) {
+                row { comment(PacenoteBundle.message("settings.approvals.hint")) }
+                buttonsGroup {
+                    row { allowCommands = radioButton(PacenoteBundle.message("settings.commands.allow")).component }
+                    indent {
+                        row {
+                            scrollCell(askBefore).align(AlignX.FILL).comment(PacenoteBundle.message("settings.commands.hint"))
+                        }.enabledIf(allowCommands.selected)
+                    }
+                    row { askCommands = radioButton(PacenoteBundle.message("settings.commands.ask")).component }
+                }
+                row {
+                    cell(serverList()).align(AlignX.FILL)
+                        .label(PacenoteBundle.message("settings.servers"), LabelPosition.TOP)
+                        .comment(PacenoteBundle.message("settings.servers.hint"))
+                }.topGap(TopGap.SMALL)
+            }
+        }
+        val disposable = Disposer.newDisposable("Pacenote settings validation")
+        details.registerValidators(disposable)
+        form.registerValidators(disposable)
+        validation = disposable
+
+        // The dialog scrolls the page; as wide as the dialog, the fields grow and shrink with it
+        // instead of the page keeping its preferred width behind a sideways scroll bar.
+        val wrapped = ScrollableColumn(0).apply { add(form) }
+        reload(select = model.drafts.firstOrNull()?.id)
+        showApprovals(settings.approvals)
+        return wrapped
+    }
+
+    private fun wireFields() {
         list.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        list.visibleRowCount = PRESET_ROWS
         list.cellRenderer = SimpleListCellRenderer.create("") { it.name.ifBlank { PacenoteBundle.message("settings.unnamed") } }
+        list.addListSelectionListener { if (!it.valueIsAdjusting) showSelected() }
         kind.renderer = SimpleListCellRenderer.create("") { it.label }
         permission.renderer = SimpleListCellRenderer.create("") { permissionLabel(it) }
-        chatAgent.renderer = SimpleListCellRenderer.create("") { it.name }
-        list.addListSelectionListener { if (!it.valueIsAdjusting) showSelected() }
-        name.document.addDocumentListener(edited { commit() })
-        arguments.document.addDocumentListener(edited { commit() })
-        command.document.addDocumentListener(edited { commit() })
+        chatAgent.renderer = SimpleListCellRenderer.create("") { it?.name.orEmpty() }
+        chatAgent.addActionListener { if (!loading) model.chooseChatAgent(chatAgent.item?.id) }
+        for (field in listOf(name, arguments, command)) field.document.addDocumentListener(edited { commit() })
         environment.document.addDocumentListener(edited { commit() })
         kind.addActionListener { commit() }
         permission.addActionListener { commit() }
-        chatAgent.addActionListener { if (!loading) model.chooseChatAgent(chatAgent.item?.id) }
 
-        val decorated = ToolbarDecorator.createDecorator(list)
-            .setAddAction { addPreset() }
-            .setRemoveAction { removeSelected() }
-            .disableUpDownActions()
-            .createPanel()
-        decorated.preferredSize = Dimension(JBUI.scale(180), JBUI.scale(200))
-
-        val reset = JButton(PacenoteBundle.message("settings.reset")).apply { addActionListener { resetToDefaults() } }
-        val form = FormBuilder.createFormBuilder()
-            .addLabeledComponent(PacenoteBundle.message("settings.name"), name)
-            .addLabeledComponent(PacenoteBundle.message("settings.agent"), kind)
-            .addLabeledComponent(PacenoteBundle.message("settings.permission"), permission)
-            .addLabeledComponent(PacenoteBundle.message("settings.arguments"), arguments)
-            .addComponentToRightColumn(hint("settings.arguments.hint"))
-            .addLabeledComponent(PacenoteBundle.message("settings.command"), command)
-            .addComponentToRightColumn(hint("settings.command.hint"))
-            .addLabeledComponent(PacenoteBundle.message("settings.environment"), JBScrollPane(environment), true)
-            .addComponentToRightColumn(hint("settings.environment.hint"))
-            .addComponentToRightColumn(problem)
-            .addComponentFillVertically(JPanel(), 0)
-            .panel
-
-        val editor = JPanel(BorderLayout(JBUI.scale(12), 0)).apply {
-            add(decorated, BorderLayout.WEST)
-            add(form, BorderLayout.CENTER)
-        }
-
-        ButtonGroup().apply {
-            add(allowCommands)
-            add(askCommands)
-        }
-        allowCommands.addActionListener { askBefore.isEnabled = allowCommands.isSelected }
-        askCommands.addActionListener { askBefore.isEnabled = allowCommands.isSelected }
         servers.cellRenderer = SimpleListCellRenderer.create("") { server ->
             val read = McpToolName.serverName(server)
             if (read == server) server else "$read ($server)"
         }
-        val serverList = ToolbarDecorator.createDecorator(servers)
-            .setAddAction { addServer() }
-            .setRemoveAction { servers.selectedIndices.reversed().forEach(serversModel::remove) }
-            .disableUpDownActions()
-            .createPanel()
-        serverList.preferredSize = Dimension(JBUI.scale(320), JBUI.scale(100))
-
-        val root = FormBuilder.createFormBuilder()
-            .addComponent(TitledSeparator(PacenoteBundle.message("settings.agents")))
-            .addComponent(hint("settings.description"))
-            .addComponent(editor)
-            .addComponent(reset)
-            .addLabeledComponent(PacenoteBundle.message("settings.chat.agent"), chatAgent)
-            .addComponent(TitledSeparator(PacenoteBundle.message("settings.approvals")))
-            .addComponent(hint("settings.approvals.hint"))
-            .addComponent(allowCommands)
-            .addComponent(JBScrollPane(askBefore))
-            .addComponent(hint("settings.commands.hint"))
-            .addComponent(askCommands)
-            .addVerticalGap(JBUI.scale(8))
-            .addComponent(JBLabel(PacenoteBundle.message("settings.servers")))
-            .addComponent(serverList)
-            .addComponentFillVertically(JPanel(), 0)
-            .panel
-        // The dialog scrolls the page; as wide as the dialog, the fields grow and shrink with it
-        // instead of the page keeping its preferred width behind a sideways scroll bar.
-        val page = ScrollableColumn(0).apply { add(root) }
-        panel = page
-        reload(select = model.drafts.firstOrNull()?.id)
-        showApprovals(settings.approvals)
-        return page
+        servers.emptyText.text = PacenoteBundle.message("settings.servers.empty")
+        servers.emptyText.appendSecondaryText(PacenoteBundle.message("settings.servers.empty.add"), SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
+            addServer()
+        }
     }
+
+    private fun presetList(): JComponent = ToolbarDecorator.createDecorator(list)
+        .setAddAction { addPreset() }
+        .setRemoveAction { removeSelected() }
+        .setRemoveActionUpdater { model.drafts.size > 1 }
+        .addExtraAction(object : DumbAwareAction(PacenoteBundle.message("settings.reset"), null, AllIcons.Actions.Rollback) {
+            override fun actionPerformed(e: AnActionEvent) = restoreBuiltIns()
+
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        })
+        .disableUpDownActions()
+        .createPanel()
+        .apply { preferredSize = Dimension(JBUI.scale(PRESET_LIST_WIDTH), preferredSize.height) }
+
+    private fun serverList(): JComponent = ToolbarDecorator.createDecorator(servers)
+        .setAddAction { addServer() }
+        .setRemoveAction { servers.selectedIndices.reversed().forEach(serversModel::remove) }
+        .disableUpDownActions()
+        .createPanel()
+        .apply { preferredSize = Dimension(JBUI.scale(SERVER_LIST_WIDTH), JBUI.scale(SERVER_LIST_HEIGHT)) }
 
     override fun isModified(): Boolean = model.isModified(settings.presets, settings.chatAgent) || approvalsDraft() != settings.approvals
 
@@ -161,12 +211,13 @@ class AgentPresetsConfigurable : Configurable {
         when (val checked = model.check()) {
             is PresetsCheck.Valid -> {
                 settings.updatePresets(checked.presets)
-                model.chatAgent?.let(settings::rememberChatAgent)
+                settings.updateChatAgent(model.chatAgent?.takeIf { pick -> checked.presets.any { it.id == pick } })
             }
             is PresetsCheck.Invalid -> {
-                val first = checked.problems.entries.first()
-                val shown = model.drafts.first { it.id == first.key }.name.ifBlank { PacenoteBundle.message("settings.unnamed") }
-                throw ConfigurationException(describe(first.value), shown)
+                val (id, problem) = checked.problems.entries.first()
+                showProblem(id, problem)
+                val shown = model.drafts.first { it.id == id }.name.ifBlank { PacenoteBundle.message("settings.unnamed") }
+                throw ConfigurationException(describe(problem), shown)
             }
         }
         settings.updateApprovals(approvalsDraft())
@@ -179,14 +230,26 @@ class AgentPresetsConfigurable : Configurable {
     }
 
     override fun disposeUIResources() {
-        panel = null
+        validation?.let(Disposer::dispose)
+        validation = null
+    }
+
+    // Takes the user to what stops the presets from being saved: the preset, and the field.
+    private fun showProblem(id: AgentPresetId, problem: PresetProblem) {
+        model.drafts.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { list.selectedIndex = it }
+        val field: JComponent = when (problem) {
+            PresetProblem.NameRequired -> name
+            is PresetProblem.Arguments -> arguments
+            PresetProblem.CommandQuote -> command
+            is PresetProblem.Environment -> environment
+        }
+        IdeFocusManager.getGlobalInstance().requestFocus(field, true)
     }
 
     private fun showApprovals(rules: ApprovalRules) {
         allowCommands.isSelected = !rules.askEveryCommand
         askCommands.isSelected = rules.askEveryCommand
         askBefore.text = rules.askBefore.joinToString("\n")
-        askBefore.isEnabled = !rules.askEveryCommand
         serversModel.replaceAll(rules.allowedServers)
     }
 
@@ -207,7 +270,19 @@ class AgentPresetsConfigurable : Configurable {
         serversModel.add(typed)
     }
 
-    private fun resetToDefaults() {
+    // Replaces every preset, so it asks first when that would drop any the user made or changed.
+    private fun restoreBuiltIns() {
+        if (!model.isBuiltIn) {
+            val answer = Messages.showOkCancelDialog(
+                list,
+                PacenoteBundle.message("settings.reset.confirm"),
+                PacenoteBundle.message("settings.reset.confirm.title"),
+                PacenoteBundle.message("settings.reset.confirm.ok"),
+                Messages.getCancelButton(),
+                Messages.getWarningIcon(),
+            )
+            if (answer != Messages.OK) return
+        }
         model.resetToDefaults()
         reload(select = model.drafts.firstOrNull()?.id)
     }
@@ -215,6 +290,8 @@ class AgentPresetsConfigurable : Configurable {
     private fun addPreset() {
         val created = model.add(PacenoteBundle.message("settings.new.name"))
         reload(select = created.id)
+        name.selectAll()
+        IdeFocusManager.getGlobalInstance().requestFocus(name, true)
     }
 
     private fun removeSelected() {
@@ -225,22 +302,23 @@ class AgentPresetsConfigurable : Configurable {
     }
 
     private fun reload(select: AgentPresetId?) {
-        loading = true
-        try {
+        quietly {
             listModel.replaceAll(model.drafts)
             model.drafts.indexOfFirst { it.id == select }.takeIf { it >= 0 }?.let { list.selectedIndex = it }
-            chatAgent.model = DefaultComboBoxModel(model.drafts.toTypedArray())
-            model.drafts.firstOrNull { it.id == model.chatAgent }?.let { chatAgent.selectedItem = it }
-        } finally {
-            loading = false
+            showChatAgent()
         }
         showSelected()
     }
 
+    // With no pick of its own the chat opens with the first preset, so that is the one shown.
+    private fun showChatAgent() {
+        chatAgent.model = DefaultComboBoxModel(model.drafts.toTypedArray())
+        chatAgent.selectedItem = model.drafts.firstOrNull { it.id == model.chatAgent } ?: model.drafts.firstOrNull()
+    }
+
     private fun showSelected() {
         val draft = list.selectedValue
-        loading = true
-        try {
+        quietly {
             for (field in listOf<JComponent>(name, kind, permission, arguments, command, environment)) field.isEnabled = draft != null
             if (draft != null) {
                 name.text = draft.name
@@ -250,22 +328,21 @@ class AgentPresetsConfigurable : Configurable {
                 command.text = draft.command
                 environment.text = draft.environment
             }
-            showBuiltInCommand()
-        } finally {
-            loading = false
+            showKind()
         }
-        showProblem()
     }
 
-    // The empty command field shows the command it stands for.
-    private fun showBuiltInCommand() {
+    // What the fields say depends on the agent: its built-in command, and how it takes arguments.
+    private fun showKind() {
         val agent = kind.item ?: return
         command.emptyText.text = AgentArguments.format(AcpHarness.builtInCommand(agent))
+        argumentsCell.comment?.text = argumentsHint(agent)
     }
 
     private fun commit() {
         if (loading) return
         val selected = list.selectedValue ?: return
+        showKind()
         val edited = selected.copy(
             name = name.text,
             kind = kind.item,
@@ -274,30 +351,27 @@ class AgentPresetsConfigurable : Configurable {
             command = command.text,
             environment = environment.text,
         )
-        showBuiltInCommand()
         if (edited == selected) return
         model.update(edited)
         val index = list.selectedIndex
-        loading = true
-        try {
+        quietly {
             listModel.setElementAt(edited, index)
-            val chosen = chatAgent.item?.id
-            chatAgent.model = DefaultComboBoxModel(model.drafts.toTypedArray())
-            model.drafts.firstOrNull { it.id == chosen }?.let { chatAgent.selectedItem = it }
-        } finally {
-            loading = false
+            showChatAgent()
         }
-        showProblem()
     }
 
-    private fun showProblem() {
-        val selected = list.selectedValue
-        val found = when (val checked = model.check()) {
-            is PresetsCheck.Valid -> null
-            is PresetsCheck.Invalid -> checked.problems[selected?.id]
-        }
-        problem.text = found?.let(::describe).orEmpty()
+    private fun argumentsProblem(text: String): AgentArgumentsProblem? =
+        (AgentArguments.parse(text, kind.item ?: AgentKind.ClaudeCode) as? AgentArgumentsParse.Invalid)?.problem
+
+    private fun argumentsHint(agent: AgentKind): String = when (agent) {
+        AgentKind.ClaudeCode -> PacenoteBundle.message("settings.arguments.hint")
+        AgentKind.Codex, AgentKind.Gemini -> PacenoteBundle.message("settings.arguments.hint.other")
     }
+
+    // Written the way the IDE's own system names variables.
+    private fun environmentHint(): String =
+        if (AcpEnvironment.isWindows) PacenoteBundle.message("settings.environment.hint", "%NAME%", "PATH=C:\\tools\\node;%PATH%")
+        else PacenoteBundle.message("settings.environment.hint", "\$NAME", "PATH=/opt/node/bin:\$PATH")
 
     private fun describe(problem: PresetProblem): String = when (problem) {
         PresetProblem.NameRequired -> PacenoteBundle.message("settings.problem.name")
@@ -315,13 +389,29 @@ class AgentPresetsConfigurable : Configurable {
         AgentPermission.Bypass -> PacenoteBundle.message("settings.permission.bypass")
     }
 
-    // A comment as the platform's settings pages draw them: wrapped, so a long one doesn't set the
-    // page's width and leave the fields to the dialog's scroll bar.
-    private fun hint(key: String): JComponent = ComponentPanelBuilder.createCommentComponent(PacenoteBundle.message(key), true)
+    // Fills fields without their listeners taking it as the user's edit. Nests: showing the selected
+    // preset happens inside a reload, through the list's own listener.
+    private fun quietly(fill: () -> Unit) {
+        val was = loading
+        loading = true
+        try {
+            fill()
+        } finally {
+            loading = was
+        }
+    }
 
     private fun edited(changed: () -> Unit) = object : DocumentListener {
         override fun insertUpdate(e: DocumentEvent) = changed()
         override fun removeUpdate(e: DocumentEvent) = changed()
         override fun changedUpdate(e: DocumentEvent) = changed()
+    }
+
+    private companion object {
+        const val EDITOR_GAP = 16
+        const val PRESET_ROWS = 6
+        const val PRESET_LIST_WIDTH = 180
+        const val SERVER_LIST_WIDTH = 240
+        const val SERVER_LIST_HEIGHT = 96
     }
 }

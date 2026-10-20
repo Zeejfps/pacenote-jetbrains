@@ -50,6 +50,24 @@ class PresetsEditorModelTest {
     }
 
     @Test
+    fun aChatPickClearedByRemovingItsPreset_isAChange() {
+        val model = model()
+        model.remove(AgentPreset.Codex.id)
+
+        assertTrue(model.isModified(AgentPreset.BuiltIn - AgentPreset.Codex, AgentPreset.Codex.id))
+    }
+
+    @Test
+    fun theBuiltInPresets_areKnownAsSuch_untilOneChanges() {
+        val model = model()
+        assertTrue(model.isBuiltIn)
+
+        model.update(model.drafts.first().copy(arguments = "--model opus"))
+
+        assertFalse(model.isBuiltIn)
+    }
+
+    @Test
     fun chatAgentMustBeOneOfTheDrafts() {
         val model = model()
         model.chooseChatAgent(dev.pacenote.settings.AgentPresetId("nope"))

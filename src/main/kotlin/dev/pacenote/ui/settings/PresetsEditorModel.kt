@@ -84,6 +84,9 @@ class PresetsEditorModel(saved: List<AgentPreset>, chatAgent: AgentPresetId?) {
         chatAgent = null
     }
 
+    /** Whether the drafts are the built-in presets as they come. */
+    val isBuiltIn: Boolean get() = drafts == AgentPreset.BuiltIn.map(PresetDraft::of)
+
     fun chooseChatAgent(id: AgentPresetId?) {
         chatAgent = id?.takeIf { pick -> drafts.any { it.id == pick } }
     }
@@ -120,9 +123,10 @@ class PresetsEditorModel(saved: List<AgentPreset>, chatAgent: AgentPresetId?) {
         return if (problems.isEmpty()) PresetsCheck.Valid(presets) else PresetsCheck.Invalid(problems)
     }
 
-    /** Whether applying would change what is [saved]. Drafts that can't be saved count as changed. */
+    /** Whether applying would change what is [saved]. Drafts that can't be saved count as changed,
+     * and so does a chat pick cleared by removing or restoring its preset. */
     fun isModified(saved: List<AgentPreset>, savedChatAgent: AgentPresetId?): Boolean {
-        if (chatAgent != null && chatAgent != savedChatAgent) return true
+        if (chatAgent != savedChatAgent) return true
         return when (val checked = check()) {
             is PresetsCheck.Valid -> checked.presets != saved
             is PresetsCheck.Invalid -> true

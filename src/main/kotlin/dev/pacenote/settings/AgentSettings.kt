@@ -62,6 +62,11 @@ class AgentSettings : PersistentStateComponent<AgentSettings.Stored>, AgentPrefe
         stored.chatAgent = id.value
     }
 
+    /** Sets the chat's pick as the settings page leaves it: none, once its preset is gone. */
+    fun updateChatAgent(id: AgentPresetId?) {
+        stored.chatAgent = id?.value
+    }
+
     // Read from the agent's thread as the guard decides, so each list is replaced whole, not changed.
     override val approvals: ApprovalRules
         get() {

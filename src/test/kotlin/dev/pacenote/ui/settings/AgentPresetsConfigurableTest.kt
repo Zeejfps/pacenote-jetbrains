@@ -1,6 +1,8 @@
 package dev.pacenote.ui.settings
 
+import com.intellij.openapi.options.ConfigurationException
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -38,7 +40,7 @@ class AgentPresetsConfigurableTest : BasePlatformTestCase() {
         val askBefore = UIUtil.findComponentsOfType(panel, JBTextArea::class.java).single { it.text.contains("git push") }
         assertEquals("git push\nnpm publish\nrm -rf", askBefore.text)
         askBefore.text = "git push\nterraform apply"
-        UIUtil.findComponentsOfType(panel, JBRadioButton::class.java).single { it.text == "Ask before every command" }.doClick()
+        UIUtil.findComponentsOfType(panel, JBRadioButton::class.java).single { it.text == "Ask for every command" }.doClick()
         assertTrue(configurable.isModified)
 
         configurable.apply()
@@ -48,10 +50,11 @@ class AgentPresetsConfigurableTest : BasePlatformTestCase() {
         configurable.disposeUIResources()
     }
 
-    fun testTheFieldsFollowTheDialogsWidth_evenNarrowerThanThePageWouldBe() {
+    fun testThePageFitsASettingsDialog_andItsFieldsTakeTheWidthThereIs() {
         val configurable = AgentPresetsConfigurable()
         val page = configurable.createComponent()
         configurable.reset()
+        val asked = page.preferredSize.width
         val scroll = JBScrollPane(page)
         val name = UIUtil.findComponentsOfType(page, JBTextField::class.java).first()
 
@@ -61,9 +64,32 @@ class AgentPresetsConfigurableTest : BasePlatformTestCase() {
             return name.width
         }
 
-        val narrow = widthAt(page.preferredSize.width - 100)
-        val wide = widthAt(page.preferredSize.width + 300)
-        assertTrue("$narrow then $wide", wide - narrow > 350)
+        assertTrue("The page asks for ${asked}px", asked <= 760)
+        val fitting = widthAt(asked + 20)
+        val wide = widthAt(asked + 320)
+        assertTrue("$fitting then $wide", wide - fitting > 250)
+        configurable.disposeUIResources()
+    }
+
+    fun testApplyingAPresetThatCantBeSaved_selectsIt_andSaysWhy() {
+        val configurable = AgentPresetsConfigurable()
+        val page = configurable.createComponent()
+        configurable.reset()
+        val list = UIUtil.findComponentsOfType(page, JBList::class.java).first { it.model.size == 3 }
+        val name = UIUtil.findComponentsOfType(page, JBTextField::class.java).first()
+        list.selectedIndex = 1
+        name.text = "  "
+        list.selectedIndex = 0
+
+        val error = try {
+            configurable.apply()
+            null
+        } catch (e: ConfigurationException) {
+            e
+        }
+
+        assertEquals("Enter a preset name.", error?.messageHtml?.toString())
+        assertEquals(1, list.selectedIndex)
         configurable.disposeUIResources()
     }
 }
