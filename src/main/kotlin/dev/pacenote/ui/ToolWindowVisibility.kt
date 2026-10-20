@@ -3,10 +3,8 @@ package dev.pacenote.ui
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
-import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
-import com.intellij.openapi.wm.ex.ToolWindowManagerListener.ToolWindowManagerEventType
 import dev.pacenote.pairing.PairingProjectService
 import dev.pacenote.pairing.PairingSessions
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +19,9 @@ class ToolWindowVisibility : ProjectActivity {
     override suspend fun execute(project: Project) {
         val service = PairingProjectService.getInstance(project)
         withContext(Dispatchers.EDT) {
-            project.messageBus.connect(service).subscribe(ToolWindowManagerListener.TOPIC, PanelFollowsWindow(service.sessions))
+            val manager = ToolWindowManager.getInstance(project)
+            val follower = PanelFollowsWindow(service.sessions, manager.getToolWindow(AgentToolWindowFactory.ID)?.isVisible == true)
+            project.messageBus.connect(service).subscribe(ToolWindowManagerListener.TOPIC, follower)
             var wasShown = false
             service.sessions.shown.collect { conversation ->
                 val window = ToolWindowManager.getInstance(project).getToolWindow(AgentToolWindowFactory.ID) ?: return@collect
@@ -36,18 +36,20 @@ class ToolWindowVisibility : ProjectActivity {
         }
     }
 
-    private class PanelFollowsWindow(private val sessions: PairingSessions) : ToolWindowManagerListener {
-        override fun stateChanged(
-            toolWindowManager: ToolWindowManager,
-            toolWindow: ToolWindow,
-            changeType: ToolWindowManagerEventType,
-        ) {
-            if (toolWindow.id != AgentToolWindowFactory.ID) return
-            when (changeType) {
-                ToolWindowManagerEventType.HideToolWindow -> sessions.hidePanel()
-                ToolWindowManagerEventType.ShowToolWindow, ToolWindowManagerEventType.ActivateToolWindow -> sessions.showPanel()
-                else -> Unit
-            }
+    /**
+     * The public [ToolWindowManagerListener.stateChanged] does not say which window changed (the
+     * overload that does is internal API), so this follows our window's visibility across events.
+     */
+    private class PanelFollowsWindow(
+        private val sessions: PairingSessions,
+        private var wasVisible: Boolean,
+    ) : ToolWindowManagerListener {
+
+        override fun stateChanged(toolWindowManager: ToolWindowManager) {
+            val visible = toolWindowManager.getToolWindow(AgentToolWindowFactory.ID)?.isVisible == true
+            if (visible == wasVisible) return
+            wasVisible = visible
+            if (visible) sessions.showPanel() else sessions.hidePanel()
         }
     }
 }
